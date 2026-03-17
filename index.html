@@ -1232,7 +1232,8 @@
 // CONFIGURATION — update these before deploying
 // ══════════════════════════════════════════════════════════════
 const CONFIG = {
-  API_TOKEN: 'jHf8oUybB2HZZUrxoP09ckwZvAzBPKKlo3G8h',
+  API_TOKEN: '',
+  PROXY_URL: 'https://ds-smartsheet-proxy.p-moir.workers.dev',
   PIN: '6555',
   SHEET_NAMES: {
     'Portland':    'Portland',
@@ -1274,13 +1275,12 @@ async function apiCall(path, method='GET', body=null) {
   const opts = {
     method,
     headers: {
-      'Authorization': `Bearer ${CONFIG.API_TOKEN}`,
       'Content-Type': 'application/json'
     }
   };
   if (body) opts.body = JSON.stringify(body);
 
-  const res = await fetch(`https://api.smartsheet.com/2.0${path}`, opts);
+  const res = await fetch(`${CONFIG.PROXY_URL}${path}`, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `API error ${res.status}`);
