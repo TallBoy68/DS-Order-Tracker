@@ -1230,7 +1230,7 @@
 
   <div class="search-content">
     <input class="search-box" id="search-input" type="text"
-           placeholder="Search by name or order number..."
+           placeholder="Search all locations by name or order #..."
            oninput="searchOrders(this.value)" autocomplete="off" autocorrect="off">
     <div id="search-results">
       <div class="empty-state">
@@ -2052,82 +2052,128 @@ async function searchOrders(query) {
     document.getElementById('search-results').innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
-        <h3>Search for an order</h3>
-        <p>Enter a customer name or order number above</p>
+        <h3>Search all locations</h3>
+        <p>Enter a customer name or order number — searches Portland, Lake Oswego, and Dayton</p>
       </div>`;
     return;
   }
 
   searchTimeout = setTimeout(async () => {
-    const sheetId = STATE.sheetIdMap[STATE.location];
-    if (!sheetId) return;
-
     try {
-      const sheet = await getSheet(sheetId);
       const q = query.toLowerCase();
-      const matches = sheet.rows.filter(row => {
-        const name  = getCellValue(row, 'Customer Name', sheetId).toLowerCase();
-        const ord   = getCellValue(row, 'Order Number', sheetId).toLowerCase();
-        return name.includes(q) || ord.includes(q);
+      const allMatches = [];
+
+      // Search all three location sheets simultaneously
+      const locationNames = ['Portland', 'Lake Oswego', 'Dayton'];
+      const searches = locationNames.map(async (loc) => {
+        const sheetId = STATE.sheetIdMap[loc];
+        if (!sheetId) return;
+        try {
+          const sheet = await getSheet(sheetId);
+          const matches = sheet.rows.filter(row => {
+            const name = getCellValue(row, 'Customer Name', sheetId).toLowerCase();
+            const ord  = getCellValue(row, 'Order Number', sheetId).toLowerCase();
+            // Exclude blank placeholder rows from search results
+            return (name.includes(q) || ord.includes(q)) && name && name !== '—';
+          });
+          matches.forEach(row => allMatches.push({ row, sheetId, loc }));
+        } catch(e) { /* skip unavailable sheet */ }
       });
 
-      if (matches.length === 0) {
+      await Promise.all(searches);
+
+      if (allMatches.length === 0) {
         document.getElementById('search-results').innerHTML = `
           <div class="empty-state">
             <div class="empty-icon">😕</div>
             <h3>No orders found</h3>
-            <p>Try a different name or order number</p>
+            <p>Searched all three locations. Try a different name or order number.</p>
           </div>`;
         return;
       }
 
-      let html = '';
-      for (const row of matches) {
-        const name   = getCellValue(row, 'Customer Name', sheetId) || 'Unknown';
-        const ord    = getCellValue(row, 'Order Number', sheetId);
-        const status = getCellValue(row, 'Status', sheetId);
-        const type   = getCellValue(row, 'Order Type', sheetId);
-        const pkg    = getCellValue(row, 'Club Package', sheetId);
+      // Sort — current location first, then others, fulfilled last
+      allMatches.sort((a, b) => {
+        const aFulfilled = getCellValue(a.row, 'Status', a.sheetId) === 'Fulfilled';
+        const bFulfilled = getCellValue(b.row, 'Status', b.sheetId) === 'Fulfilled';
+        const aCurrent = a.loc === STATE.location ? 0 : 1;
+        const bCurrent = b.loc === STATE.location ? 0 : 1;
+        if (aFulfilled !== bFulfilled) return aFulfilled ? 1 : -1;
+        return aCurrent - bCurrent;
+      });
 
-        const statusClass = status === 'Fulfilled' ? 'badge-fulfilled' :
-                            status === 'In Inventory' ? 'badge-inventory' :
-                            status === 'Received' ? 'badge-inventory' : 'badge-pending';
-        const typeClass = type === 'Custom' ? 'badge-custom' : 'badge-standard';
+      // Group by location for clarity
+      let resultHtml = '';
+      const grouped = {};
+      allMatches.forEach(m => {
+        if (!grouped[m.loc]) grouped[m.loc] = [];
+        grouped[m.loc].push(m);
+      });
 
-        html += `<div class="result-row" onclick="selectSearchResult('${row.id}', '${sheetId}')">
-          <div class="result-row-info">
-            <h4>${name}</h4>
-            <p>${ord ? 'Order #' + ord : 'No order #'} &bull; ${pkg}</p>
-          </div>
-          <div>
-            <div class="result-row-badge ${typeClass}" style="margin-bottom:4px">${type || 'Standard'}</div>
-            <div class="result-row-badge ${statusClass}">${status || 'Pending'}</div>
-          </div>
+      for (const [loc, matches] of Object.entries(grouped)) {
+        const isCurrentLoc = loc === STATE.location;
+        resultHtml += `<div class="section-label" style="margin-top:${resultHtml ? '16px' : '0'}">
+          ${loc}${isCurrentLoc ? ' (current)' : ' ⚠ different location'}
         </div>`;
+
+        for (const { row, sheetId, loc: rowLoc } of matches) {
+          const name     = getCellValue(row, 'Customer Name', sheetId) || 'Unknown';
+          const ord      = getCellValue(row, 'Order Number', sheetId);
+          const status   = getCellValue(row, 'Status', sheetId);
+          const type     = getCellValue(row, 'Order Type', sheetId);
+          const pkg      = getCellValue(row, 'Club Package', sheetId);
+          const assigned = getCellValue(row, 'Assigned Location', sheetId);
+
+          const statusClass = status === 'Fulfilled'   ? 'badge-fulfilled' :
+                              status === 'In Inventory' ? 'badge-inventory' :
+                              status === 'Received'     ? 'badge-inventory' : 'badge-pending';
+          const typeClass = type === 'Custom' ? 'badge-custom' : 'badge-standard';
+
+          // Highlight if from a different location than current
+          const borderStyle = !isCurrentLoc ? 'border: 1.5px solid #F9A825;' : '';
+
+          resultHtml += `<div class="result-row" style="${borderStyle}" 
+            onclick="selectSearchResult('${row.id}', '${sheetId}', '${rowLoc}')">
+            <div class="result-row-info">
+              <h4>${name}</h4>
+              <p>${ord ? 'Order #' + ord : 'No order #'} &bull; ${pkg}</p>
+            </div>
+            <div>
+              <div class="result-row-badge ${typeClass}" style="margin-bottom:4px">${type || 'Standard'}</div>
+              <div class="result-row-badge ${statusClass}">${status || 'Pending'}</div>
+            </div>
+          </div>`;
+        }
       }
-      document.getElementById('search-results').innerHTML = html;
-    } catch(e) { /* silent */ }
+
+      document.getElementById('search-results').innerHTML = resultHtml;
+    } catch(e) {
+      showToast('Search error: ' + e.message, 'error');
+    }
   }, 300);
 }
 
-async function selectSearchResult(rowId, sheetId) {
-  const sheet = await getSheet(parseInt(sheetId));
+async function selectSearchResult(rowId, sheetId, assignedLoc) {
+  const sid   = parseInt(sheetId);
+  const sheet = await getSheet(sid);
   const row   = sheet.rows.find(r => r.id === parseInt(rowId));
   if (!row) return;
 
   STATE.currentRow     = row;
-  STATE.currentSheetId = parseInt(sheetId);
+  STATE.currentSheetId = sid;
   STATE.currentRowId   = parseInt(rowId);
 
-  // Count multi orders
-  const custName = getCellValue(row, 'Customer Name', parseInt(sheetId));
+  // Count multi orders across all sheets for this customer
+  const custName = getCellValue(row, 'Customer Name', sid);
   let multiCount = 0;
   for (const r of sheet.rows) {
-    if (getCellValue(r, 'Customer Name', parseInt(sheetId)) === custName &&
-        getCellValue(r, 'Status', parseInt(sheetId)) !== 'Fulfilled') multiCount++;
+    if (getCellValue(r, 'Customer Name', sid) === custName &&
+        getCellValue(r, 'Status', sid) !== 'Fulfilled') multiCount++;
   }
 
-  showResult(row, parseInt(sheetId), multiCount);
+  // Pre-select current lounge as pickup location so exception fires naturally
+  // if the order was assigned elsewhere
+  showResult(row, sid, multiCount);
 }
 
 // ══════════════════════════════════════════════════════════════
