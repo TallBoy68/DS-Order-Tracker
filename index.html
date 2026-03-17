@@ -911,6 +911,20 @@
   .empty-state h3 { font-size: 16px; color: var(--navy); margin-bottom: 8px; }
   .empty-state p  { font-size: 13px; line-height: 1.5; }
 
+  /* Order selection list for Standard QR multi-match */
+  #screen-select { background: var(--cream); justify-content: flex-start; }
+  .select-content { width: 100%; max-width: 480px; padding: 20px; flex: 1; }
+  .select-intro {
+    background: linear-gradient(135deg, var(--navy), var(--navy-light));
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    color: white;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .select-intro strong { display: block; font-size: 16px; margin-bottom: 4px; }
+
   .section-label {
     font-size: 11px;
     font-weight: 600;
@@ -922,7 +936,6 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
 
@@ -1229,6 +1242,32 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Order Select (Standard QR multi-match)            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-select">
+  <div class="app-header">
+    <div class="header-logo-wrap"><img src="" alt="Domaine Serene" class="header-logo" id="select-logo"></div>
+    <button class="back-btn" onclick="goBack('screen-main')">← Back</button>
+    <div style="text-align:right">
+      <div class="header-title">Select Order</div>
+      <div class="header-sub" id="select-location-sub">Portland</div>
+    </div>
+  </div>
+  <div class="select-content">
+    <div class="select-intro">
+      <strong>Multiple orders found</strong>
+      This is a shared Standard QR code. Select the correct member order below.
+    </div>
+    <div id="select-results"></div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-outline" onclick="showWalkInFromSelect()">
+        🚶 Walk-in / Inventory Pickup Instead
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════════════
 // CONFIGURATION — update these before deploying
@@ -1265,9 +1304,14 @@ const STATE = {
   walkinLocation:  null,
   scanStream:      null,
   scanInterval:    null,
+  scanAnimFrame:   null,
+  barcodeDetector: null,
   columnMap:       {},  // sheetId -> {colName -> colId}
   sheetCache:      {},  // sheetId -> rows array
-  sheetIdMap:      {}   // sheetName -> sheetId
+  sheetIdMap:      {},  // sheetName -> sheetId
+  pendingSheetId:  null,
+  pendingRows:     [],
+  hasInventory:    false
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1504,7 +1548,7 @@ async function startScan() {
   showScreen('screen-scan');
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { 
+      video: {
         facingMode: { ideal: 'environment' },
         width:  { ideal: 1920 },
         height: { ideal: 1920 }
@@ -1515,80 +1559,98 @@ async function startScan() {
     video.srcObject = stream;
     await video.play();
 
-    // Wait for jsQR to be available then start detection
-    if (typeof jsQR !== 'undefined') {
-      startQRDetection();
-    } else {
-      showToast('QR scanner loading...', '');
-      // Wait up to 5 seconds for jsQR
-      let attempts = 0;
-      const waitForJsQR = setInterval(() => {
-        attempts++;
-        if (typeof jsQR !== 'undefined') {
-          clearInterval(waitForJsQR);
-          startQRDetection();
-        } else if (attempts > 50) {
-          clearInterval(waitForJsQR);
-          showToast('Scanner unavailable. Use manual entry.', 'error');
+    // Use native BarcodeDetector if available (Chrome, Edge, Safari 17+)
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await BarcodeDetector.getSupportedFormats();
+        if (supported.includes('qr_code')) {
+          STATE.barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+          startNativeDetection();
+          return;
         }
-      }, 100);
+      } catch(e) { /* fall through to canvas method */ }
     }
+
+    // Fallback: canvas-based detection using image analysis
+    startCanvasDetection();
+
   } catch(e) {
     showToast('Camera access denied. Use manual entry.', 'error');
   }
 }
 
-function startQRDetection() {
+// Native BarcodeDetector method (Chrome/Edge/Safari 17+)
+function startNativeDetection() {
+  const video = document.getElementById('qr-video');
+  let scanning = true;
+
+  async function detect() {
+    if (!scanning || !STATE.scanStream) return;
+    try {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        const codes = await STATE.barcodeDetector.detect(video);
+        if (codes.length > 0 && codes[0].rawValue) {
+          scanning = false;
+          stopScan();
+          showToast('QR code detected!', 'success');
+          lookupOrder(codes[0].rawValue.trim());
+          return;
+        }
+      }
+    } catch(e) { /* continue scanning */ }
+    STATE.scanAnimFrame = requestAnimationFrame(detect);
+  }
+
+  STATE.scanAnimFrame = requestAnimationFrame(detect);
+}
+
+// Canvas fallback method
+function startCanvasDetection() {
   const video = document.getElementById('qr-video');
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  let lastScan = 0;
 
+  // Try to load jsQR dynamically as last resort
+  if (typeof jsQR === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    s.onload = () => runCanvasScan(video, canvas, ctx);
+    s.onerror = () => showToast('Scanner unavailable. Use manual entry below.', 'warning');
+    document.head.appendChild(s);
+  } else {
+    runCanvasScan(video, canvas, ctx);
+  }
+}
+
+function runCanvasScan(video, canvas, ctx) {
   STATE.scanInterval = setInterval(() => {
+    if (!STATE.scanStream) { clearInterval(STATE.scanInterval); return; }
     if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-    
-    const now = Date.now();
-    if (now - lastScan < 150) return;
-    lastScan = now;
+    if (typeof jsQR === 'undefined') return;
 
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
-    // Try full frame first
-    canvas.width  = vw;
-    canvas.height = vh;
+    canvas.width = vw; canvas.height = vh;
     ctx.drawImage(video, 0, 0, vw, vh);
-    
-    let imageData = ctx.getImageData(0, 0, vw, vh);
-    let code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: 'dontInvert'
-    });
-
-    // If not found, try center crop (more focused on QR in frame)
-    if (!code) {
-      const cropSize = Math.min(vw, vh) * 0.7;
-      const cropX = (vw - cropSize) / 2;
-      const cropY = (vh - cropSize) / 2;
-      canvas.width  = cropSize;
-      canvas.height = cropSize;
-      ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, cropSize, cropSize);
-      imageData = ctx.getImageData(0, 0, cropSize, cropSize);
-      code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'attemptBoth'
-      });
-    }
+    const imageData = ctx.getImageData(0, 0, vw, vh);
+    const code = jsQR(imageData.data, vw, vh, { inversionAttempts: 'attemptBoth' });
 
     if (code && code.data && code.data.trim()) {
       stopScan();
       showToast('QR code detected!', 'success');
       lookupOrder(code.data.trim());
     }
-  }, 150);
+  }, 200);
 }
 
+function startQRDetection() { startCanvasDetection(); }
+
 function stopScan() {
-  if (STATE.scanInterval) { clearInterval(STATE.scanInterval); STATE.scanInterval = null; }
+  if (STATE.scanInterval)   { clearInterval(STATE.scanInterval); STATE.scanInterval = null; }
+  if (STATE.scanAnimFrame)  { cancelAnimationFrame(STATE.scanAnimFrame); STATE.scanAnimFrame = null; }
+  if (STATE.barcodeDetector){ STATE.barcodeDetector = null; }
   if (STATE.scanStream) {
     STATE.scanStream.getTracks().forEach(t => t.stop());
     STATE.scanStream = null;
@@ -1631,10 +1693,20 @@ async function lookupOrder(qrOrOrderNum) {
       }
     }
 
-    if (!matchedRow && matchedRows.length > 0) matchedRow = matchedRows[0];
+    // Separate real orders from blank placeholders
+    const realMatches  = matchedRows.filter(r => {
+      const cust = getCellValue(r, 'Customer Name', sheetId);
+      const ord  = getCellValue(r, 'Order Number', sheetId);
+      return cust && cust !== '—' && ord && ord !== '—';
+    });
+    const blankMatches = matchedRows.filter(r => {
+      const cust = getCellValue(r, 'Customer Name', sheetId);
+      const ord  = getCellValue(r, 'Order Number', sheetId);
+      return !cust || cust === '—' || !ord || ord === '—';
+    });
 
-    if (!matchedRow) {
-      // Check if it's a standard QR with no name — walk-in inventory
+    // No matches at all
+    if (matchedRows.length === 0) {
       const isStdQR = qrOrOrderNum.startsWith('QR-') && !qrOrOrderNum.endsWith('-CUSTOM');
       if (isStdQR) {
         showLoading(false);
@@ -1646,26 +1718,110 @@ async function lookupOrder(qrOrOrderNum) {
       return;
     }
 
-    STATE.currentRow    = matchedRow;
-    STATE.currentSheetId = sheetId;
-    STATE.currentRowId  = matchedRow.id;
+    // Only blank placeholder rows — go to walk-in
+    if (realMatches.length === 0 && blankMatches.length > 0) {
+      showLoading(false);
+      showWalkInFromScan(qrOrOrderNum);
+      return;
+    }
 
-    // Check for multiple orders by same customer
-    const custName = getCellValue(matchedRow, 'Customer Name', sheetId);
-    let multiCount = 0;
-    if (custName) {
+    // Exactly one real order — go straight to result
+    if (realMatches.length === 1) {
+      matchedRow = realMatches[0];
+      STATE.currentRow     = matchedRow;
+      STATE.currentSheetId = sheetId;
+      STATE.currentRowId   = matchedRow.id;
+      const custName = getCellValue(matchedRow, 'Customer Name', sheetId);
+      let multiCount = 0;
       for (const row of sheet.rows) {
         if (getCellValue(row, 'Customer Name', sheetId) === custName &&
             getCellValue(row, 'Status', sheetId) !== 'Fulfilled') multiCount++;
       }
+      showResult(matchedRow, sheetId, multiCount);
+      showLoading(false);
+      return;
     }
 
-    showResult(matchedRow, sheetId, multiCount);
+    // Multiple real orders — show selection screen
+    if (realMatches.length > 1) {
+      showLoading(false);
+      showOrderSelection(realMatches, sheetId, blankMatches.length > 0);
+      return;
+    }
+
+    // Fallback
+    matchedRow = matchedRows[0];
+    STATE.currentRow     = matchedRow;
+    STATE.currentSheetId = sheetId;
+    STATE.currentRowId   = matchedRow.id;
+    const custName2 = getCellValue(matchedRow, 'Customer Name', sheetId);
+    let multiCount2 = 0;
+    for (const row of sheet.rows) {
+      if (getCellValue(row, 'Customer Name', sheetId) === custName2 &&
+          getCellValue(row, 'Status', sheetId) !== 'Fulfilled') multiCount2++;
+    }
+    showResult(matchedRow, sheetId, multiCount2);
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
     showLoading(false);
   }
+}
+
+function showOrderSelection(rows, sheetId, hasInventory) {
+  document.getElementById('select-location-sub').textContent = STATE.location;
+
+  // Copy logo src to select screen
+  const logoSrc = document.querySelector('.header-logo-wrap img').src;
+  document.getElementById('select-logo').src = logoSrc;
+
+  let html = '';
+  for (const row of rows) {
+    const name   = getCellValue(row, 'Customer Name', sheetId);
+    const ord    = getCellValue(row, 'Order Number', sheetId);
+    const status = getCellValue(row, 'Status', sheetId);
+    const pkg    = getCellValue(row, 'Club Package', sheetId);
+    const statusClass = status === 'Fulfilled' ? 'badge-fulfilled' :
+                        status === 'In Inventory' ? 'badge-inventory' : 'badge-pending';
+
+    html += `<div class="result-row" onclick="selectOrderFromList('${row.id}', '${sheetId}')">
+      <div class="result-row-info">
+        <h4>${name}</h4>
+        <p>Order #${ord} &bull; ${pkg}</p>
+      </div>
+      <div class="result-row-badge ${statusClass}">${status || 'Pending'}</div>
+    </div>`;
+  }
+
+  document.getElementById('select-results').innerHTML = html;
+  STATE.pendingSheetId  = sheetId;
+  STATE.pendingRows     = rows;
+  STATE.hasInventory    = hasInventory;
+  showScreen('screen-select');
+}
+
+async function selectOrderFromList(rowId, sheetId) {
+  const sid = parseInt(sheetId);
+  const sheet = await getSheet(sid);
+  const row = sheet.rows.find(r => r.id === parseInt(rowId));
+  if (!row) return;
+
+  STATE.currentRow     = row;
+  STATE.currentSheetId = sid;
+  STATE.currentRowId   = parseInt(rowId);
+
+  const custName = getCellValue(row, 'Customer Name', sid);
+  let multiCount = 0;
+  for (const r of sheet.rows) {
+    if (getCellValue(r, 'Customer Name', sid) === custName &&
+        getCellValue(r, 'Status', sid) !== 'Fulfilled') multiCount++;
+  }
+  showResult(row, sid, multiCount);
+}
+
+function showWalkInFromSelect() {
+  goBack('screen-main');
+  setTimeout(() => showWalkIn(), 100);
 }
 
 function showResult(row, sheetId, multiCount) {
