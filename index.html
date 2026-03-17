@@ -934,6 +934,79 @@
     margin-bottom: 10px;
     margin-top: 4px;
   }
+
+  /* Activity list screen */
+  #screen-activity { background: var(--cream); justify-content: flex-start; }
+  .activity-content { width: 100%; max-width: 480px; padding: 20px; flex: 1; }
+
+  .stat-card.tappable {
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1.5px solid transparent;
+  }
+  .stat-card.tappable:active {
+    transform: scale(0.96);
+    border-color: var(--navy-light);
+  }
+  .stat-card .tap-hint {
+    font-size: 9px;
+    color: var(--navy-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  .activity-header-card {
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    color: white;
+  }
+  .activity-header-card h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .activity-header-card p { font-size: 12px; opacity: 0.75; }
+
+  .activity-pending  { background: linear-gradient(135deg, #5D6D7E, #7F8C8D); }
+  .activity-inventory { background: linear-gradient(135deg, #1A5276, #2471A3); }
+  .activity-fulfilled { background: linear-gradient(135deg, var(--green), #388E3C); }
+
+  .empty-activity {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--gray);
+  }
+  .empty-activity .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-activity h3 { font-size: 16px; color: var(--navy); margin-bottom: 6px; }
+  .empty-activity p  { font-size: 13px; }
+
+  .activity-row {
+    background: var(--white);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .activity-row:active { transform: scale(0.99); }
+  .activity-row.standard-row { border-left-color: var(--navy); }
+  .activity-row.custom-row   { border-left-color: var(--rust-light); }
+
+  .activity-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+  }
+  .activity-row-name { font-size: 15px; font-weight: 600; color: var(--navy); }
+  .activity-row-time { font-size: 11px; color: var(--gray); }
+  .activity-row-sub  { font-size: 12px; color: var(--gray); }
+  .activity-row-loc  { font-size: 11px; color: var(--navy-light); font-style: italic; margin-top: 3px; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
@@ -1044,17 +1117,20 @@
 
     <div class="section-label">Today's Activity</div>
     <div class="stats-row">
-      <div class="stat-card">
+      <div class="stat-card tappable" onclick="showActivity('pending')">
         <div class="stat-num" id="stat-pending">—</div>
         <div class="stat-label">Pending</div>
+        <div class="tap-hint">tap to view</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card tappable" onclick="showActivity('inventory')">
         <div class="stat-num" id="stat-inventory">—</div>
         <div class="stat-label">In Stock</div>
+        <div class="tap-hint">tap to view</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card tappable" onclick="showActivity('fulfilled')">
         <div class="stat-num" id="stat-fulfilled">—</div>
         <div class="stat-label">Fulfilled</div>
+        <div class="tap-hint">tap to view</div>
       </div>
     </div>
   </div>
@@ -1239,6 +1315,27 @@
         <p>Enter a customer name or order number above</p>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Activity List                                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-activity">
+  <div class="app-header">
+    <div class="header-logo-wrap"><img src="" alt="Domaine Serene" class="header-logo" id="activity-logo"></div>
+    <button class="back-btn" onclick="goBack('screen-main')">← Back</button>
+    <div style="text-align:right">
+      <div class="header-title" id="activity-title">Activity</div>
+      <div class="header-sub" id="activity-location-sub">Portland</div>
+    </div>
+  </div>
+  <div class="activity-content">
+    <div class="activity-header-card" id="activity-header-card">
+      <h3 id="activity-header-title">Pending Orders</h3>
+      <p id="activity-header-sub">Loading...</p>
+    </div>
+    <div id="activity-list"></div>
   </div>
 </div>
 
@@ -1763,6 +1860,122 @@ async function lookupOrder(qrOrOrderNum) {
     showResult(matchedRow, sheetId, multiCount2);
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function showActivity(type) {
+  // type: 'pending', 'inventory', 'fulfilled'
+  const sheetId = STATE.sheetIdMap[STATE.location];
+  if (!sheetId) { showToast('Sheet not connected.', 'error'); return; }
+
+  showLoading(true);
+  try {
+    const sheet = await getSheet(sheetId);
+    delete STATE.sheetCache[sheetId];
+
+    const today = new Date().toISOString().split('T')[0];
+
+    let filtered = [];
+    let title, subTitle, cardClass, emptyMsg;
+
+    if (type === 'pending') {
+      filtered = sheet.rows.filter(r => {
+        const status = getCellValue(r, 'Status', sheetId);
+        const name   = getCellValue(r, 'Customer Name', sheetId);
+        return (status === 'Pending') && name && name !== '—';
+      });
+      title      = 'Pending Orders';
+      subTitle   = `${filtered.length} order${filtered.length !== 1 ? 's' : ''} awaiting receipt — ${STATE.location}`;
+      cardClass  = 'activity-pending';
+      emptyMsg   = 'No pending orders. All orders have been received.';
+
+    } else if (type === 'inventory') {
+      filtered = sheet.rows.filter(r => {
+        const status = getCellValue(r, 'Status', sheetId);
+        const name   = getCellValue(r, 'Customer Name', sheetId);
+        return (status === 'In Inventory' || status === 'Received') && name && name !== '—';
+      });
+      title      = 'In Stock';
+      subTitle   = `${filtered.length} order${filtered.length !== 1 ? 's' : ''} ready for pickup — ${STATE.location}`;
+      cardClass  = 'activity-inventory';
+      emptyMsg   = 'No orders currently in stock.';
+
+    } else {
+      // Fulfilled — today only
+      filtered = sheet.rows.filter(r => {
+        const status    = getCellValue(r, 'Status', sheetId);
+        const fulfilled = getCellValue(r, 'Fulfilled Date', sheetId);
+        const name      = getCellValue(r, 'Customer Name', sheetId);
+        return status === 'Fulfilled' && fulfilled && fulfilled.startsWith(today) && name && name !== '—';
+      });
+      title      = 'Fulfilled Today';
+      subTitle   = `${filtered.length} order${filtered.length !== 1 ? 's' : ''} completed today — ${STATE.location}`;
+      cardClass  = 'activity-fulfilled';
+      emptyMsg   = 'No orders fulfilled today yet.';
+    }
+
+    // Update header
+    document.getElementById('activity-title').textContent        = title;
+    document.getElementById('activity-location-sub').textContent = STATE.location;
+    document.getElementById('activity-header-title').textContent = title;
+    document.getElementById('activity-header-sub').textContent   = subTitle;
+    document.getElementById('activity-header-card').className    = `activity-header-card ${cardClass}`;
+
+    // Copy logo
+    const logoSrc = document.querySelector('.header-logo-wrap img').src;
+    document.getElementById('activity-logo').src = logoSrc;
+
+    // Build list
+    if (filtered.length === 0) {
+      document.getElementById('activity-list').innerHTML = `
+        <div class="empty-activity">
+          <div class="empty-icon">${type === 'fulfilled' ? '✅' : type === 'inventory' ? '📦' : '⏳'}</div>
+          <h3>All clear</h3>
+          <p>${emptyMsg}</p>
+        </div>`;
+    } else {
+      let listHtml = '';
+      for (const row of filtered) {
+        const name     = getCellValue(row, 'Customer Name', sheetId);
+        const ord      = getCellValue(row, 'Order Number', sheetId);
+        const pkg      = getCellValue(row, 'Club Package', sheetId);
+        const club     = getCellValue(row, 'Club Title', sheetId);
+        const orderType= getCellValue(row, 'Order Type', sheetId);
+        const pickup   = getCellValue(row, 'Actual Pickup Location', sheetId);
+        const assigned = getCellValue(row, 'Assigned Location', sheetId);
+        const fulfilled= getCellValue(row, 'Fulfilled Date', sheetId);
+
+        const rowClass = orderType === 'Custom' ? 'custom-row' : 'standard-row';
+
+        // Format fulfilled time if available
+        let timeStr = '';
+        if (fulfilled && fulfilled.includes('T')) {
+          const d = new Date(fulfilled);
+          timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+
+        // Flag if pickup differs from assigned
+        const exceptionFlag = pickup && assigned && pickup !== assigned
+          ? `<span style="color:var(--rust-light);font-size:11px;"> ⚠ ${pickup}</span>` : '';
+
+        listHtml += `<div class="activity-row ${rowClass}"
+          onclick="selectSearchResult('${row.id}', '${sheetId}', '${STATE.location}')">
+          <div class="activity-row-top">
+            <div class="activity-row-name">${name}</div>
+            ${timeStr ? `<div class="activity-row-time">${timeStr}</div>` : ''}
+          </div>
+          <div class="activity-row-sub">Order #${ord || '—'} &bull; ${pkg || club || '—'}</div>
+          <div class="activity-row-loc">${assigned || STATE.location}${exceptionFlag}</div>
+        </div>`;
+      }
+      document.getElementById('activity-list').innerHTML = listHtml;
+    }
+
+    showScreen('screen-activity');
+  } catch(e) {
+    showToast('Error loading activity: ' + e.message, 'error');
   } finally {
     showLoading(false);
   }
