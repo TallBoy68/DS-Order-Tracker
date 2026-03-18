@@ -1634,13 +1634,21 @@ async function loadStats() {
 
     function isToday(dateStr) {
       if (!dateStr) return false;
-      // Try parsing the date string in various formats
       try {
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        return d.getFullYear() === todayYear &&
-               (d.getMonth() + 1) === todayMonth &&
-               d.getDate() === todayDay;
+        // Extract just the date portion (YYYY-MM-DD) regardless of format
+        // This avoids UTC vs local timezone conversion issues
+        let datePart = '';
+        if (typeof dateStr === 'string') {
+          // Handle ISO format: 2026-03-18 or 2026-03-18T... 
+          datePart = dateStr.split('T')[0].trim();
+        } else if (typeof dateStr === 'number') {
+          // Handle numeric timestamp
+          const d = new Date(dateStr);
+          datePart = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+        // Build today's date string in same YYYY-MM-DD format using LOCAL time
+        const todayStr = `${todayYear}-${String(todayMonth).padStart(2,'0')}-${String(todayDay).padStart(2,'0')}`;
+        return datePart === todayStr;
       } catch(e) { return false; }
     }
 
@@ -1926,11 +1934,15 @@ async function showActivity(type) {
     function isToday(dateStr) {
       if (!dateStr) return false;
       try {
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        return d.getFullYear() === todayYear &&
-               (d.getMonth() + 1) === todayMonth &&
-               d.getDate() === todayDay;
+        let datePart = '';
+        if (typeof dateStr === 'string') {
+          datePart = dateStr.split('T')[0].trim();
+        } else if (typeof dateStr === 'number') {
+          const d = new Date(dateStr);
+          datePart = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+        const todayStr = `${todayYear}-${String(todayMonth).padStart(2,'0')}-${String(todayDay).padStart(2,'0')}`;
+        return datePart === todayStr;
       } catch(e) { return false; }
     }
 
