@@ -1374,9 +1374,10 @@ const CONFIG = {
   PROXY_URL: 'https://ds-smartsheet-proxy.p-moir.workers.dev',
   PIN: '6555',
   SHEET_NAMES: {
-    'Portland':    'Portland',
-    'Lake Oswego': 'LakeOswego',
-    'Dayton':      'Dayton'
+    'Portland':         'Portland',
+    'Lake Oswego':      'LakeOswego',
+    'Dayton':           'Dayton',
+    'CompletedOrders':  'CompletedOrders'
   },
   // These will be populated automatically from the API
   SHEET_IDS: {
@@ -1406,9 +1407,10 @@ const STATE = {
   columnMap:       {},  // sheetId -> {colName -> colId}
   sheetCache:      {},  // sheetId -> rows array
   sheetIdMap:      {},  // sheetName -> sheetId
-  pendingSheetId:  null,
-  pendingRows:     [],
-  hasInventory:    false
+  pendingSheetId:   null,
+  pendingRows:      [],
+  hasInventory:     false,
+  completedSheetId: null
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1623,15 +1625,38 @@ async function loadStats() {
   const sheetId = STATE.sheetIdMap[STATE.location];
   if (!sheetId) return;
   try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Load location sheet for pending and inventory counts
     const sheet = await getSheet(sheetId);
-    delete STATE.sheetCache[sheetId]; // refresh next time
+    delete STATE.sheetCache[sheetId];
     let pending = 0, inventory = 0, fulfilled = 0;
     for (const row of sheet.rows) {
       const status = getCellValue(row, 'Status', sheetId);
-      if (status === 'Pending')       pending++;
+      const name   = getCellValue(row, 'Customer Name', sheetId);
+      if (!name || name === '—') continue; // skip placeholders
+      if (status === 'Pending')                                  pending++;
       else if (status === 'In Inventory' || status === 'Received') inventory++;
-      else if (status === 'Fulfilled') fulfilled++;
     }
+
+    // Load CompletedOrders for today's fulfilled count at this location
+    const completedSheetId = STATE.sheetIdMap['CompletedOrders'];
+    if (completedSheetId) {
+      const completedSheet = await getSheet(completedSheetId);
+      delete STATE.sheetCache[completedSheetId];
+      for (const row of completedSheet.rows) {
+        const fulfilledDate = getCellValue(row, 'Fulfilled Date', completedSheetId);
+        const depLoc        = getCellValue(row, 'Depletion Location', completedSheetId);
+        const actual        = getCellValue(row, 'Actual Pickup Location', completedSheetId);
+        const assigned      = getCellValue(row, 'Assigned Location', completedSheetId);
+        const name          = getCellValue(row, 'Customer Name', completedSheetId);
+        const locMatch      = depLoc === STATE.location || actual === STATE.location || assigned === STATE.location;
+        if (fulfilledDate && fulfilledDate.startsWith(today) && locMatch && name && name !== '—') {
+          fulfilled++;
+        }
+      }
+    }
+
     document.getElementById('stat-pending').textContent   = pending;
     document.getElementById('stat-inventory').textContent = inventory;
     document.getElementById('stat-fulfilled').textContent = fulfilled;
@@ -1903,13 +1928,32 @@ async function showActivity(type) {
       emptyMsg   = 'No orders currently in stock.';
 
     } else {
-      // Fulfilled — today only
-      filtered = sheet.rows.filter(r => {
-        const status    = getCellValue(r, 'Status', sheetId);
-        const fulfilled = getCellValue(r, 'Fulfilled Date', sheetId);
-        const name      = getCellValue(r, 'Customer Name', sheetId);
-        return status === 'Fulfilled' && fulfilled && fulfilled.startsWith(today) && name && name !== '—';
-      });
+      // Fulfilled — query CompletedOrders sheet filtered by location and today's date
+      const completedSheetId = STATE.sheetIdMap['CompletedOrders'];
+      if (completedSheetId) {
+        const completedSheet = await getSheet(completedSheetId);
+        delete STATE.sheetCache[completedSheetId];
+        filtered = completedSheet.rows.filter(r => {
+          const fulfilled = getCellValue(r, 'Fulfilled Date', completedSheetId);
+          const name      = getCellValue(r, 'Customer Name', completedSheetId);
+          const depLoc    = getCellValue(r, 'Depletion Location', completedSheetId);
+          const assigned  = getCellValue(r, 'Assigned Location', completedSheetId);
+          const actual    = getCellValue(r, 'Actual Pickup Location', completedSheetId);
+          // Match to current location via depletion, actual pickup, or assigned location
+          const locMatch  = depLoc === STATE.location || actual === STATE.location || assigned === STATE.location;
+          return fulfilled && fulfilled.startsWith(today) && name && name !== '—' && locMatch;
+        });
+        // Use completedSheetId for cell value lookups in the list
+        STATE.completedSheetId = completedSheetId;
+      } else {
+        // Fallback to location sheet if CompletedOrders not yet mapped
+        filtered = sheet.rows.filter(r => {
+          const status    = getCellValue(r, 'Status', sheetId);
+          const fulfilled = getCellValue(r, 'Fulfilled Date', sheetId);
+          const name      = getCellValue(r, 'Customer Name', sheetId);
+          return status === 'Fulfilled' && fulfilled && fulfilled.startsWith(today) && name && name !== '—';
+        });
+      }
       title      = 'Fulfilled Today';
       subTitle   = `${filtered.length} order${filtered.length !== 1 ? 's' : ''} completed today — ${STATE.location}`;
       cardClass  = 'activity-fulfilled';
@@ -1936,16 +1980,19 @@ async function showActivity(type) {
           <p>${emptyMsg}</p>
         </div>`;
     } else {
+      // For fulfilled, rows come from CompletedOrders sheet
+      const listSheetId = (type === 'fulfilled' && STATE.completedSheetId) ? STATE.completedSheetId : sheetId;
+
       let listHtml = '';
       for (const row of filtered) {
-        const name     = getCellValue(row, 'Customer Name', sheetId);
-        const ord      = getCellValue(row, 'Order Number', sheetId);
-        const pkg      = getCellValue(row, 'Club Package', sheetId);
-        const club     = getCellValue(row, 'Club Title', sheetId);
-        const orderType= getCellValue(row, 'Order Type', sheetId);
-        const pickup   = getCellValue(row, 'Actual Pickup Location', sheetId);
-        const assigned = getCellValue(row, 'Assigned Location', sheetId);
-        const fulfilled= getCellValue(row, 'Fulfilled Date', sheetId);
+        const name     = getCellValue(row, 'Customer Name', listSheetId);
+        const ord      = getCellValue(row, 'Order Number', listSheetId);
+        const pkg      = getCellValue(row, 'Club Package', listSheetId);
+        const club     = getCellValue(row, 'Club Title', listSheetId);
+        const orderType= getCellValue(row, 'Order Type', listSheetId);
+        const pickup   = getCellValue(row, 'Actual Pickup Location', listSheetId);
+        const assigned = getCellValue(row, 'Assigned Location', listSheetId);
+        const fulfilled= getCellValue(row, 'Fulfilled Date', listSheetId);
 
         const rowClass = orderType === 'Custom' ? 'custom-row' : 'standard-row';
 
@@ -1961,7 +2008,7 @@ async function showActivity(type) {
           ? `<span style="color:var(--rust-light);font-size:11px;"> ⚠ ${pickup}</span>` : '';
 
         listHtml += `<div class="activity-row ${rowClass}"
-          onclick="selectSearchResult('${row.id}', '${sheetId}', '${STATE.location}')">
+          onclick="selectSearchResult('${row.id}', '${listSheetId}', '${STATE.location}')">
           <div class="activity-row-top">
             <div class="activity-row-name">${name}</div>
             ${timeStr ? `<div class="activity-row-time">${timeStr}</div>` : ''}
