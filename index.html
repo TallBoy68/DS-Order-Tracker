@@ -1625,7 +1625,24 @@ async function loadStats() {
   const sheetId = STATE.sheetIdMap[STATE.location];
   if (!sheetId) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Build today's date in multiple formats to handle Smartsheet date variations
+    const now = new Date();
+    const todayISO   = now.toISOString().split('T')[0]; // 2026-03-18
+    const todayYear  = now.getFullYear();
+    const todayMonth = now.getMonth() + 1;
+    const todayDay   = now.getDate();
+
+    function isToday(dateStr) {
+      if (!dateStr) return false;
+      // Try parsing the date string in various formats
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        return d.getFullYear() === todayYear &&
+               (d.getMonth() + 1) === todayMonth &&
+               d.getDate() === todayDay;
+      } catch(e) { return false; }
+    }
 
     // Load location sheet for pending and inventory counts
     const sheet = await getSheet(sheetId);
@@ -1651,7 +1668,7 @@ async function loadStats() {
         const assigned      = getCellValue(row, 'Assigned Location', completedSheetId);
         const name          = getCellValue(row, 'Customer Name', completedSheetId);
         const locMatch      = depLoc === STATE.location || actual === STATE.location || assigned === STATE.location;
-        if (fulfilledDate && fulfilledDate.startsWith(today) && locMatch && name && name !== '—') {
+        if (isToday(fulfilledDate) && locMatch && name && name !== '—') {
           fulfilled++;
         }
       }
@@ -1900,7 +1917,22 @@ async function showActivity(type) {
     const sheet = await getSheet(sheetId);
     delete STATE.sheetCache[sheetId];
 
-    const today = new Date().toISOString().split('T')[0];
+    // Robust date comparison to handle Smartsheet date format variations
+    const now = new Date();
+    const todayYear  = now.getFullYear();
+    const todayMonth = now.getMonth() + 1;
+    const todayDay   = now.getDate();
+
+    function isToday(dateStr) {
+      if (!dateStr) return false;
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        return d.getFullYear() === todayYear &&
+               (d.getMonth() + 1) === todayMonth &&
+               d.getDate() === todayDay;
+      } catch(e) { return false; }
+    }
 
     let filtered = [];
     let title, subTitle, cardClass, emptyMsg;
@@ -1941,7 +1973,7 @@ async function showActivity(type) {
           const actual    = getCellValue(r, 'Actual Pickup Location', completedSheetId);
           // Match to current location via depletion, actual pickup, or assigned location
           const locMatch  = depLoc === STATE.location || actual === STATE.location || assigned === STATE.location;
-          return fulfilled && fulfilled.startsWith(today) && name && name !== '—' && locMatch;
+          return isToday(fulfilled) && name && name !== '—' && locMatch;
         });
         // Use completedSheetId for cell value lookups in the list
         STATE.completedSheetId = completedSheetId;
@@ -1951,7 +1983,7 @@ async function showActivity(type) {
           const status    = getCellValue(r, 'Status', sheetId);
           const fulfilled = getCellValue(r, 'Fulfilled Date', sheetId);
           const name      = getCellValue(r, 'Customer Name', sheetId);
-          return status === 'Fulfilled' && fulfilled && fulfilled.startsWith(today) && name && name !== '—';
+          return status === 'Fulfilled' && isToday(fulfilled) && name && name !== '—';
         });
       }
       title      = 'Fulfilled Today';
