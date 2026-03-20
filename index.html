@@ -1095,6 +1095,15 @@
       </div>
     </div>
 
+    <!-- Admin badge -->
+    <div id="admin-badge" style="display:none;background:linear-gradient(135deg,#C9A84C,#E8C97A);border-radius:12px;padding:10px 16px;margin-bottom:16px;align-items:center;gap:10px;">
+      <span style="font-size:20px;">🔑</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1F3864;">Admin Mode</div>
+        <div style="font-size:11px;color:#5D4037;">Full access enabled across all locations</div>
+      </div>
+    </div>
+
     <div class="action-grid">
       <div class="action-card primary" onclick="startScan()">
         <span class="action-icon">📷</span>
@@ -1112,6 +1121,33 @@
         <span class="action-icon">🚶</span>
         <h3>Walk-in Pickup</h3>
         <p>Inventory kit for unscheduled pickup</p>
+      </div>
+    </div>
+
+    <!-- Admin-only actions -->
+    <div id="admin-actions" style="display:none;">
+      <div class="section-label" style="margin-top:16px;">Admin Actions</div>
+      <div class="action-grid">
+        <div class="action-card secondary" onclick="showBulkReceive()">
+          <span class="action-icon">📦</span>
+          <h3>Bulk Receive</h3>
+          <p>Scan & enter qty for large shipments</p>
+        </div>
+        <div class="action-card secondary" onclick="showLocationSwitch()">
+          <span class="action-icon">🗺️</span>
+          <h3>Switch Location</h3>
+          <p>View any location sheet</p>
+        </div>
+        <div class="action-card secondary" onclick="showExceptionLog()">
+          <span class="action-icon">⚠️</span>
+          <h3>Exception Log</h3>
+          <p>View all open exceptions</p>
+        </div>
+        <div class="action-card secondary" onclick="showStatusOverride()">
+          <span class="action-icon">✏️</span>
+          <h3>Override Status</h3>
+          <p>Correct an order status</p>
+        </div>
       </div>
     </div>
 
@@ -1319,6 +1355,88 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Bulk Receive                                       -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-bulk">
+  <div class="app-header">
+    <div class="header-logo-wrap"><img src="" alt="DS" class="header-logo" id="bulk-logo"></div>
+    <button class="back-btn" onclick="goBack('screen-main')">← Back</button>
+    <div style="text-align:right">
+      <div class="header-title">Bulk Receive</div>
+      <div class="header-sub" id="bulk-location-sub">Portland</div>
+    </div>
+  </div>
+  <div class="walkin-content">
+    <div class="form-card">
+      <h3>Receive Standard Kit Shipment</h3>
+      <div class="form-group">
+        <label>Scan or Enter QR Code</label>
+        <div style="display:flex;gap:8px;">
+          <input class="form-input" id="bulk-qr" type="text" placeholder="e.g. QR-S25-EST" autocomplete="off" style="flex:1;">
+          <button class="btn btn-primary" style="width:auto;padding:14px 16px;" onclick="startBulkScan()">📷</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Club Package</label>
+        <input class="form-input" id="bulk-pkg" type="text" placeholder="Auto-filled from QR" readonly style="color:var(--gray);">
+      </div>
+      <div class="form-group">
+        <label>Quantity Received</label>
+        <input class="form-input" id="bulk-qty" type="number" min="1" max="999" placeholder="Enter number of kits received" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Receiving Location</label>
+        <div class="location-chips" id="bulk-location-chips">
+          <div class="loc-chip selected" data-loc="Portland" onclick="selectBulkLoc(this)">Portland</div>
+          <div class="loc-chip" data-loc="Lake Oswego" onclick="selectBulkLoc(this)">Lake Oswego</div>
+          <div class="loc-chip" data-loc="Dayton" onclick="selectBulkLoc(this)">Dayton</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview panel -->
+    <div id="bulk-preview" style="display:none;">
+      <div class="form-card" style="background:var(--white);">
+        <h3>Receiving Summary</h3>
+        <div id="bulk-preview-content"></div>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <button class="btn btn-primary" onclick="previewBulkReceive()">
+        🔍 Preview Before Confirming
+      </button>
+      <button class="btn btn-success" id="bulk-confirm-btn" style="display:none;" onclick="confirmBulkReceive()">
+        ✅ Confirm & Receive All
+      </button>
+      <button class="btn btn-outline" onclick="goBack('screen-main')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Exception Log (Admin)                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-exceptions">
+  <div class="app-header">
+    <div class="header-logo-wrap"><img src="" alt="DS" class="header-logo" id="exc-logo"></div>
+    <button class="back-btn" onclick="goBack('screen-main')">← Back</button>
+    <div style="text-align:right">
+      <div class="header-title">Exception Log</div>
+      <div class="header-sub">All Locations</div>
+    </div>
+  </div>
+  <div class="search-content">
+    <div id="exception-list">
+      <div class="empty-state">
+        <div class="empty-icon">⏳</div>
+        <h3>Loading exceptions...</h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
 <!-- SCREEN: Activity List                                      -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="screen" id="screen-activity">
@@ -1373,11 +1491,13 @@ const CONFIG = {
   API_TOKEN: '',
   PROXY_URL: 'https://ds-smartsheet-proxy.p-moir.workers.dev',
   PIN: '6555',
+  ADMIN_PIN: '1989',
   SHEET_NAMES: {
     'Portland':         'Portland',
     'Lake Oswego':      'LakeOswego',
     'Dayton':           'Dayton',
-    'CompletedOrders':  'CompletedOrders'
+    'CompletedOrders':  'CompletedOrders',
+    'ExceptionLog':     'ExceptionLog'
   },
   // These will be populated automatically from the API
   SHEET_IDS: {
@@ -1394,6 +1514,7 @@ const CONFIG = {
 // ══════════════════════════════════════════════════════════════
 const STATE = {
   location:        null,
+  isAdmin:         false,
   pinBuffer:       '',
   currentRow:      null,
   currentSheetId:  null,
@@ -1527,9 +1648,11 @@ function updatePinDots() {
 }
 
 function checkPin() {
-  if (STATE.pinBuffer === CONFIG.PIN) {
+  if (STATE.pinBuffer === CONFIG.PIN || STATE.pinBuffer === CONFIG.ADMIN_PIN) {
+    STATE.isAdmin = STATE.pinBuffer === CONFIG.ADMIN_PIN;
     sessionStorage.setItem('ds_logged_in', '1');
     sessionStorage.setItem('ds_location', STATE.location);
+    sessionStorage.setItem('ds_admin', STATE.isAdmin ? '1' : '0');
     document.getElementById('login-error').textContent = '';
     enterApp();
   } else {
@@ -1540,10 +1663,12 @@ function checkPin() {
 }
 
 function autoLogin() {
-  const li = sessionStorage.getItem('ds_logged_in');
-  const loc = sessionStorage.getItem('ds_location');
+  const li    = sessionStorage.getItem('ds_logged_in');
+  const loc   = sessionStorage.getItem('ds_location');
+  const admin = sessionStorage.getItem('ds_admin');
   if (li === '1' && loc) {
     STATE.location = loc;
+    STATE.isAdmin  = admin === '1';
     enterApp();
     return true;
   }
@@ -1573,6 +1698,9 @@ async function enterApp() {
   updateLocationLabels();
   updateGreeting();
   loadStats();
+  // Show/hide admin elements
+  const adminActions = document.getElementById('admin-actions');
+  if (adminActions) adminActions.style.display = STATE.isAdmin ? 'block' : 'none';
   showScreen('screen-main');
 }
 
@@ -1580,6 +1708,10 @@ function updateLocationLabels() {
   const loc = STATE.location;
   document.getElementById('main-location-sub').textContent   = loc;
   document.getElementById('main-location-badge').textContent = loc + ' ▾';
+
+  // Show admin badge if admin
+  const adminBadge = document.getElementById('admin-badge');
+  if (adminBadge) adminBadge.style.display = STATE.isAdmin ? 'flex' : 'none';
   document.getElementById('scan-location-sub').textContent   = loc;
   document.getElementById('result-location-sub').textContent = loc;
   document.getElementById('walkin-location-sub').textContent = loc;
@@ -2495,6 +2627,321 @@ function showToast(msg, type='') {
   t.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — LOCATION SWITCH
+// ══════════════════════════════════════════════════════════════
+function showLocationSwitch() {
+  const loc = prompt(
+    'Switch to location:\n\n1 = Portland\n2 = Lake Oswego\n3 = Dayton',
+    '1'
+  );
+  const map = { '1': 'Portland', '2': 'Lake Oswego', '3': 'Dayton' };
+  if (map[loc]) {
+    STATE.location = map[loc];
+    sessionStorage.setItem('ds_location', STATE.location);
+    updateLocationLabels();
+    loadStats();
+    showToast(`Switched to ${STATE.location}`, 'success');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — STATUS OVERRIDE
+// ══════════════════════════════════════════════════════════════
+function showStatusOverride() {
+  // Reuse search to find the order, then show all status options
+  STATE.statusOverrideMode = true;
+  showSearch();
+  showToast('Search for the order to override', '');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — EXCEPTION LOG
+// ══════════════════════════════════════════════════════════════
+async function showExceptionLog() {
+  showLoading(true);
+  try {
+    const sheetId = STATE.sheetIdMap['ExceptionLog'] || 
+                    Object.entries(STATE.sheetIdMap).find(([k]) => k.toLowerCase().includes('exception'))?.[1];
+    
+    if (!sheetId) {
+      showToast('Exception Log sheet not found in workspace.', 'error');
+      showLoading(false);
+      return;
+    }
+
+    const sheet = await getSheet(sheetId);
+    delete STATE.sheetCache[sheetId];
+
+    // Copy logo
+    const logoSrc = document.querySelector('.header-logo-wrap img').src;
+    document.getElementById('exc-logo').src = logoSrc;
+
+    const openExceptions = sheet.rows.filter(r => {
+      const resolved = getCellValue(r, 'Resolution Date', sheetId);
+      const ord = getCellValue(r, 'Order Number', sheetId);
+      return ord && ord !== '—' && (!resolved || resolved === '—');
+    });
+
+    if (openExceptions.length === 0) {
+      document.getElementById('exception-list').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">✅</div>
+          <h3>No open exceptions</h3>
+          <p>All location exceptions have been resolved.</p>
+        </div>`;
+    } else {
+      let html = `<div class="section-label">${openExceptions.length} open exception${openExceptions.length !== 1 ? 's' : ''}</div>`;
+      for (const row of openExceptions) {
+        const ord      = getCellValue(row, 'Order Number', sheetId);
+        const cust     = getCellValue(row, 'Customer Name', sheetId);
+        const assigned = getCellValue(row, 'Assigned Location', sheetId);
+        const actual   = getCellValue(row, 'Actual Pickup Location', sheetId);
+        const flagged  = getCellValue(row, 'Date Flagged', sheetId);
+        html += `
+          <div class="activity-row" style="border-left: 4px solid var(--red);">
+            <div class="activity-row-top">
+              <div class="activity-row-name">${cust || 'Unknown'}</div>
+              <div class="activity-row-time">${flagged || ''}</div>
+            </div>
+            <div class="activity-row-sub">Order #${ord}</div>
+            <div class="activity-row-loc" style="color:var(--red);">
+              ${assigned} → ${actual}
+            </div>
+          </div>`;
+      }
+      document.getElementById('exception-list').innerHTML = html;
+    }
+    showScreen('screen-exceptions');
+  } catch(e) {
+    showToast('Error loading exceptions: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — BULK RECEIVE
+// ══════════════════════════════════════════════════════════════
+let BULK_STATE = {
+  qrId:         '',
+  pkg:          '',
+  qty:          0,
+  location:     '',
+  pendingRows:  [],
+  surplusCount: 0,
+  sheetId:      null,
+};
+
+function showBulkReceive() {
+  if (!STATE.isAdmin) { showToast('Admin access required.', 'error'); return; }
+  document.getElementById('bulk-qr').value  = '';
+  document.getElementById('bulk-pkg').value  = '';
+  document.getElementById('bulk-qty').value  = '';
+  document.getElementById('bulk-preview').style.display = 'none';
+  document.getElementById('bulk-confirm-btn').style.display = 'none';
+  document.getElementById('bulk-location-sub').textContent = STATE.location;
+
+  // Copy logo
+  const logoSrc = document.querySelector('.header-logo-wrap img').src;
+  document.getElementById('bulk-logo').src = logoSrc;
+
+  BULK_STATE.location = STATE.location;
+  setDefaultLocationChips('bulk-location-chips', STATE.location);
+  showScreen('screen-bulk');
+}
+
+function selectBulkLoc(chip) {
+  document.querySelectorAll('#bulk-location-chips .loc-chip').forEach(c => c.classList.remove('selected'));
+  chip.classList.add('selected');
+  BULK_STATE.location = chip.dataset.loc;
+}
+
+function startBulkScan() {
+  // Use manual entry for bulk — scanning mid-form is disruptive
+  const val = prompt('Enter QR Code ID (e.g. QR-S25-EST):');
+  if (val && val.trim()) {
+    const qr  = val.trim();
+    const pkg = qr.replace('QR-', '').replace(/-/g, ' ');
+    document.getElementById('bulk-qr').value  = qr;
+    document.getElementById('bulk-pkg').value  = pkg;
+    BULK_STATE.qrId = qr;
+    BULK_STATE.pkg  = pkg;
+    document.getElementById('bulk-qty').focus();
+  }
+}
+
+// Also allow typing QR directly
+document.addEventListener('DOMContentLoaded', () => {
+  const qrInput = document.getElementById('bulk-qr');
+  if (qrInput) {
+    qrInput.addEventListener('change', () => {
+      const qr  = qrInput.value.trim();
+      const pkg = qr.replace('QR-', '').replace(/-/g, ' ');
+      document.getElementById('bulk-pkg').value = pkg;
+      BULK_STATE.qrId = qr;
+      BULK_STATE.pkg  = pkg;
+    });
+  }
+});
+
+async function previewBulkReceive() {
+  const qr  = document.getElementById('bulk-qr').value.trim();
+  const qty = parseInt(document.getElementById('bulk-qty').value);
+
+  if (!qr)      { showToast('Please enter or scan a QR Code.', 'error'); return; }
+  if (!qty || qty < 1) { showToast('Please enter a valid quantity.', 'error'); return; }
+
+  BULK_STATE.qrId     = qr;
+  BULK_STATE.pkg      = qr.replace('QR-', '').replace(/-/g, ' ');
+  BULK_STATE.qty      = qty;
+
+  showLoading(true);
+  try {
+    const sheetId = STATE.sheetIdMap[BULK_STATE.location];
+    if (!sheetId) throw new Error('Sheet not found for ' + BULK_STATE.location);
+
+    const sheet = await getSheet(sheetId);
+    delete STATE.sheetCache[sheetId];
+    BULK_STATE.sheetId = sheetId;
+
+    // Find pending real member orders matching this QR/package
+    const pendingRows = sheet.rows.filter(r => {
+      const rowQR   = getCellValue(r, 'QR Code ID', sheetId);
+      const rowPkg  = getCellValue(r, 'Club Package', sheetId);
+      const status  = getCellValue(r, 'Status', sheetId);
+      const name    = getCellValue(r, 'Customer Name', sheetId);
+      const ord     = getCellValue(r, 'Order Number', sheetId);
+      const isPending = status === 'Pending';
+      const isReal    = name && name !== '—' && ord && ord !== '—';
+      const isMatch   = rowQR === qr || rowPkg === BULK_STATE.pkg ||
+                        rowPkg.replace(/\s/g,'') === BULK_STATE.pkg.replace(/\s/g,'');
+      return isPending && isReal && isMatch;
+    });
+
+    const toReceive  = Math.min(pendingRows.length, qty);
+    const surplus    = Math.max(0, qty - pendingRows.length);
+
+    BULK_STATE.pendingRows  = pendingRows.slice(0, toReceive);
+    BULK_STATE.surplusCount = surplus;
+
+    // Build preview
+    let previewHtml = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="background:var(--green-light);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:28px;font-weight:700;color:var(--green);">${toReceive}</div>
+          <div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;">Member orders to receive</div>
+        </div>
+        <div style="background:${surplus > 0 ? '#FFF8E1' : 'var(--gray-light)'};border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:28px;font-weight:700;color:${surplus > 0 ? '#E65100' : 'var(--gray)'};">${surplus}</div>
+          <div style="font-size:11px;color:${surplus > 0 ? '#E65100' : 'var(--gray)'};text-transform:uppercase;letter-spacing:0.5px;">Surplus placeholder rows</div>
+        </div>
+      </div>`;
+
+    if (toReceive > 0) {
+      previewHtml += `<div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Orders to mark In Inventory:</div>`;
+      for (const row of BULK_STATE.pendingRows) {
+        const name = getCellValue(row, 'Customer Name', sheetId);
+        const ord  = getCellValue(row, 'Order Number', sheetId);
+        previewHtml += `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--cream-dark);color:var(--navy);">
+          ${name} <span style="color:var(--gray);font-size:11px;">— Order #${ord}</span></div>`;
+      }
+    }
+
+    if (surplus > 0) {
+      previewHtml += `<div style="margin-top:12px;font-size:12px;color:#E65100;font-style:italic;">
+        ${surplus} blank placeholder row${surplus !== 1 ? 's' : ''} will be created for walk-in inventory.</div>`;
+    }
+
+    if (pendingRows.length > qty) {
+      previewHtml += `<div style="margin-top:8px;font-size:12px;color:var(--gray);font-style:italic;">
+        Note: ${pendingRows.length - qty} additional pending orders exist beyond this shipment quantity and will remain Pending.</div>`;
+    }
+
+    document.getElementById('bulk-preview-content').innerHTML = previewHtml;
+    document.getElementById('bulk-preview').style.display = 'block';
+    document.getElementById('bulk-confirm-btn').style.display = 'flex';
+
+  } catch(e) {
+    showToast('Preview error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function confirmBulkReceive() {
+  showLoading(true);
+  try {
+    const sheetId = BULK_STATE.sheetId;
+    const colMap  = STATE.columnMap[sheetId];
+    const today   = new Date().toISOString().split('T')[0];
+
+    // Step 1: Mark pending member orders as In Inventory
+    if (BULK_STATE.pendingRows.length > 0) {
+      const updates = BULK_STATE.pendingRows.map(row => ({
+        id: row.id,
+        cells: [
+          { columnId: colMap['Status'],        value: 'In Inventory' },
+          { columnId: colMap['Received Date'],  value: today },
+        ]
+      }));
+
+      // Smartsheet API accepts up to 20 rows per PUT request
+      const chunkSize = 20;
+      for (let i = 0; i < updates.length; i += chunkSize) {
+        const chunk = updates.slice(i, i + chunkSize);
+        await apiCall(`/sheets/${sheetId}/rows`, 'PUT', chunk);
+      }
+    }
+
+    // Step 2: Create surplus placeholder rows
+    if (BULK_STATE.surplusCount > 0) {
+      const pkg     = BULK_STATE.pkg;
+      const qrId    = BULK_STATE.qrId;
+      const loc     = BULK_STATE.location;
+
+      // Derive season from package code
+      const seasonMap = { 'W': 'Winter', 'S': 'Spring', 'F': 'Fall' };
+      const season = seasonMap[pkg.charAt(0).toUpperCase()] || 'Year-Round';
+
+      const newRows = Array.from({ length: BULK_STATE.surplusCount }, () => ({
+        cells: [
+          { columnId: colMap['Club Package'],        value: pkg },
+          { columnId: colMap['Season'],              value: season },
+          { columnId: colMap['Order Type'],          value: 'Standard' },
+          { columnId: colMap['QR Code ID'],          value: qrId },
+          { columnId: colMap['Assigned Location'],   value: loc },
+          { columnId: colMap['Status'],              value: 'In Inventory' },
+          { columnId: colMap['Received Date'],       value: today },
+          { columnId: colMap['Depletion Location'],  value: loc },
+        ]
+      }));
+
+      // Create in chunks of 20
+      const chunkSize = 20;
+      for (let i = 0; i < newRows.length; i += chunkSize) {
+        const chunk = newRows.slice(i, i + chunkSize);
+        await apiCall(`/sheets/${sheetId}/rows`, 'POST', chunk);
+      }
+    }
+
+    delete STATE.sheetCache[sheetId];
+    loadStats();
+
+    showToast(
+      `✅ Received ${BULK_STATE.pendingRows.length + BULK_STATE.surplusCount} kits`,
+      'success'
+    );
+
+    setTimeout(() => goBack('screen-main'), 1500);
+
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
