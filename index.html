@@ -1531,7 +1531,8 @@ const STATE = {
   pendingSheetId:   null,
   pendingRows:      [],
   hasInventory:     false,
-  completedSheetId: null
+  completedSheetId: null,
+  bulkScanMode:     false
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1948,6 +1949,11 @@ function showManualEntry() {
 // ORDER LOOKUP
 // ══════════════════════════════════════════════════════════════
 async function lookupOrder(qrOrOrderNum) {
+  // If in bulk scan mode, route back to bulk receive screen
+  if (STATE.bulkScanMode) {
+    completeBulkScan(qrOrOrderNum);
+    return;
+  }
   showLoading(true);
   try {
     const sheetId = STATE.sheetIdMap[STATE.location];
@@ -2725,6 +2731,20 @@ async function showExceptionLog() {
 // ══════════════════════════════════════════════════════════════
 // ADMIN — BULK RECEIVE
 // ══════════════════════════════════════════════════════════════
+function parsePkgFromQR(qrId) {
+  // Strip QR- prefix, then replace only the first dash (between year and club code)
+  // QR-W26-EST    -> W26 EST
+  // QR-S25-GC     -> S25 GC
+  // QR-W26-EST-Red -> W26 EST-Red
+  const stripped = qrId.replace(/^QR-/i, '');
+  // Find the second dash (after season+year code like W26 or S25)
+  const firstDash = stripped.indexOf('-');
+  if (firstDash === -1) return stripped;
+  const seasonYear = stripped.substring(0, firstDash);   // e.g. "W26"
+  const rest       = stripped.substring(firstDash + 1);  // e.g. "EST" or "EST-Red"
+  return seasonYear + ' ' + rest;
+}
+
 let BULK_STATE = {
   qrId:         '',
   pkg:          '',
@@ -2760,17 +2780,23 @@ function selectBulkLoc(chip) {
 }
 
 function startBulkScan() {
-  // Use manual entry for bulk — scanning mid-form is disruptive
-  const val = prompt('Enter QR Code ID (e.g. QR-S25-EST):');
-  if (val && val.trim()) {
-    const qr  = val.trim();
-    const pkg = qr.replace('QR-', '').replace(/-/g, ' ');
-    document.getElementById('bulk-qr').value  = qr;
-    document.getElementById('bulk-pkg').value  = pkg;
-    BULK_STATE.qrId = qr;
-    BULK_STATE.pkg  = pkg;
-    document.getElementById('bulk-qty').focus();
-  }
+  // Use real camera scanner
+  STATE.bulkScanMode = true;
+  showScreen('screen-scan');
+  startScan();
+}
+
+function completeBulkScan(qrValue) {
+  // Called when scan completes in bulk mode
+  STATE.bulkScanMode = false;
+  const pkg = parsePkgFromQR(qrValue);
+  document.getElementById('bulk-qr').value  = qrValue;
+  document.getElementById('bulk-pkg').value  = pkg;
+  BULK_STATE.qrId = qrValue;
+  BULK_STATE.pkg  = pkg;
+  showScreen('screen-bulk');
+  showToast('QR scanned: ' + qrValue, 'success');
+  setTimeout(() => document.getElementById('bulk-qty').focus(), 300);
 }
 
 // Also allow typing QR directly
@@ -2779,7 +2805,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (qrInput) {
     qrInput.addEventListener('change', () => {
       const qr  = qrInput.value.trim();
-      const pkg = qr.replace('QR-', '').replace(/-/g, ' ');
+      const pkg = parsePkgFromQR(qr);
       document.getElementById('bulk-pkg').value = pkg;
       BULK_STATE.qrId = qr;
       BULK_STATE.pkg  = pkg;
@@ -2817,7 +2843,8 @@ async function previewBulkReceive() {
       const isPending = status === 'Pending';
       const isReal    = name && name !== '—' && ord && ord !== '—';
       const isMatch   = rowQR === qr || rowPkg === BULK_STATE.pkg ||
-                        rowPkg.replace(/\s/g,'') === BULK_STATE.pkg.replace(/\s/g,'');
+                        rowPkg.replace(/\s+/g,'') === BULK_STATE.pkg.replace(/\s+/g,'') ||
+                        rowPkg.replace(/\s+/g,'') === qr.replace(/^QR-/i,'').replace(/-/g,'');
       return isPending && isReal && isMatch;
     });
 
