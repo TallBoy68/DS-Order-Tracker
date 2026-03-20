@@ -1581,8 +1581,12 @@ async function updateRow(sheetId, rowId, cells) {
   }]);
 }
 
-async function initSheetIds() {
-  if (Object.values(STATE.sheetIdMap).length > 0) return;
+async function initSheetIds(force=false) {
+  if (!force && Object.values(STATE.sheetIdMap).length > 0) {
+    // Check if all configured sheets are mapped — if not, refresh
+    const allMapped = Object.keys(CONFIG.SHEET_NAMES).every(k => STATE.sheetIdMap[k]);
+    if (allMapped) return;
+  }
   showLoading(true);
   try {
     const sheets = await getSheets();
@@ -1593,6 +1597,8 @@ async function initSheetIds() {
         }
       }
     }
+    // Debug: log what was found
+    console.log('Sheet IDs mapped:', Object.keys(STATE.sheetIdMap).join(', '));
   } catch(e) {
     showToast('Could not connect to Smartsheet. Check API token.', 'error');
   } finally {
@@ -2822,8 +2828,13 @@ async function previewBulkReceive() {
   showLoading(true);
   try {
     // Step 1: Look up Inventory Summary pool row
+    // Refresh sheet IDs in case InventorySummary was added after initial login
+    await initSheetIds();
     const invSheetId = STATE.sheetIdMap['InventorySummary'];
-    if (!invSheetId) throw new Error('Inventory Summary sheet not found. Check sheet name.');
+    if (!invSheetId) {
+      const mapped = Object.keys(STATE.sheetIdMap).join(', ');
+      throw new Error('Inventory Summary sheet not found. Mapped sheets: ' + mapped + '. Check sheet name matches exactly: InventorySummary');
+    }
     const invSheet = await getSheet(invSheetId);
     delete STATE.sheetCache[invSheetId];
 
