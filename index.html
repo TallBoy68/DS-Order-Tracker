@@ -1497,7 +1497,8 @@ const CONFIG = {
     'Lake Oswego':      'LakeOswego',
     'Dayton':           'Dayton',
     'CompletedOrders':  'CompletedOrders',
-    'ExceptionLog':     'ExceptionLog'
+    'ExceptionLog':     'ExceptionLog',
+    'InventorySummary': 'InventorySummary'
   },
   // These will be populated automatically from the API
   SHEET_IDS: {
@@ -2416,53 +2417,44 @@ async function completeWalkIn() {
   const club  = document.getElementById('walkin-club').value.trim();
 
   if (!name) { showToast('Please enter a customer name.', 'error'); return; }
+  if (!club) { showToast('Please enter a club package.', 'error'); return; }
 
   showLoading(true);
   try {
     const sheetId = STATE.sheetIdMap[STATE.location];
     if (!sheetId) throw new Error('Sheet not found');
 
-    const sheet = await getSheet(sheetId);
-    delete STATE.sheetCache[sheetId];
-
+    const sheet  = await getSheet(sheetId);
     const colMap = STATE.columnMap[sheetId];
-
-    // Find a blank placeholder row (no Customer Name, no Order Number)
-    let placeholderRow = null;
-    for (const row of sheet.rows) {
-      const custVal = getCellValue(row, 'Customer Name', sheetId);
-      const ordVal  = getCellValue(row, 'Order Number', sheetId);
-      const pkgVal  = getCellValue(row, 'Club Package', sheetId);
-      // Match on club package if provided, or any blank row
-      const pkgMatch = club ? pkgVal.toLowerCase().includes(club.toLowerCase()) ||
-                              club.toLowerCase().includes(pkgVal.toLowerCase()) : true;
-      if ((!custVal || custVal === '—') && (!ordVal || ordVal === '—') && pkgMatch) {
-        placeholderRow = row;
-        break;
-      }
-    }
-
-    if (!placeholderRow) {
-      showToast('No available inventory placeholder found for this kit.', 'error');
-      showLoading(false);
-      return;
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    const cells = [
-      { columnId: colMap['Customer Name'],          value: name },
-      { columnId: colMap['Status'],                 value: 'Fulfilled' },
-      { columnId: colMap['Fulfilled Date'],          value: today },
-      { columnId: colMap['Actual Pickup Location'],  value: STATE.walkinLocation },
-      { columnId: colMap['Depletion Location'],      value: STATE.walkinLocation },
-    ];
-
-    if (order && colMap['Order Number']) cells.push({ columnId: colMap['Order Number'], value: order });
-
-    await updateRow(sheetId, placeholderRow.id, cells);
     delete STATE.sheetCache[sheetId];
 
-    showToast('✅ Walk-in pickup completed!', 'success');
+    const today    = new Date().toISOString().split('T')[0];
+    const qrId     = 'QR-' + club.replace(/ /g, '-');
+    const seasonMap = { 'W': 'Winter', 'S': 'Spring', 'F': 'Fall' };
+    const season   = seasonMap[club.charAt(0).toUpperCase()] || 'Year-Round';
+
+    // Create a new fulfilled row directly — no placeholder lookup needed
+    const newRow = { cells: [
+      { columnId: colMap['Customer Name'],          value: name },
+      { columnId: colMap['Club Package'],           value: club },
+      { columnId: colMap['Season'],                 value: season },
+      { columnId: colMap['Order Type'],             value: 'Standard' },
+      { columnId: colMap['QR Code ID'],             value: qrId },
+      { columnId: colMap['Assigned Location'],      value: STATE.walkinLocation },
+      { columnId: colMap['Status'],                 value: 'Fulfilled' },
+      { columnId: colMap['Fulfilled Date'],         value: today },
+      { columnId: colMap['Actual Pickup Location'], value: STATE.walkinLocation },
+      { columnId: colMap['Depletion Location'],     value: STATE.walkinLocation },
+    ]};
+
+    if (order && colMap['Order Number']) {
+      newRow.cells.push({ columnId: colMap['Order Number'], value: order });
+    }
+
+    await apiCall('/sheets/' + sheetId + '/rows', 'POST', [newRow]);
+    delete STATE.sheetCache[sheetId];
+
+    showToast('Walk-in pickup recorded!', 'success');
     loadStats();
     setTimeout(() => goBack('screen-main'), 1200);
   } catch(e) {
@@ -2746,13 +2738,16 @@ function parsePkgFromQR(qrId) {
 }
 
 let BULK_STATE = {
-  qrId:         '',
-  pkg:          '',
-  qty:          0,
-  location:     '',
-  pendingRows:  [],
-  surplusCount: 0,
-  sheetId:      null,
+  qrId:            '',
+  pkg:             '',
+  qty:             0,
+  location:        '',
+  pendingRows:     [],
+  locSheetId:      null,
+  invSheetId:      null,
+  invRowId:        null,
+  currentReceived: 0,
+  newReceived:     0,
 };
 
 function showBulkReceive() {
@@ -2833,59 +2828,46 @@ async function previewBulkReceive() {
     delete STATE.sheetCache[sheetId];
     BULK_STATE.sheetId = sheetId;
 
-    // Find pending real member orders matching this QR/package
-    const pendingRows = sheet.rows.filter(r => {
-      const rowQR   = getCellValue(r, 'QR Code ID', sheetId);
-      const rowPkg  = getCellValue(r, 'Club Package', sheetId);
-      const status  = getCellValue(r, 'Status', sheetId);
-      const name    = getCellValue(r, 'Customer Name', sheetId);
-      const ord     = getCellValue(r, 'Order Number', sheetId);
-      const isPending = status === 'Pending';
-      const isReal    = name && name !== '—' && ord && ord !== '—';
-      const isMatch   = rowQR === qr || rowPkg === BULK_STATE.pkg ||
-                        rowPkg.replace(/\s+/g,'') === BULK_STATE.pkg.replace(/\s+/g,'') ||
-                        rowPkg.replace(/\s+/g,'') === qr.replace(/^QR-/i,'').replace(/-/g,'');
-      return isPending && isReal && isMatch;
-    });
+    const pendingRows = sheet ? sheet.rows.filter(r => {
+      const rowPkg = getCellValue(r, 'Club Package', sheetId);
+      const status = getCellValue(r, 'Status', sheetId);
+      const name   = getCellValue(r, 'Customer Name', sheetId);
+      const ord    = getCellValue(r, 'Order Number', sheetId);
+      return status === 'Pending' && name && name !== '—' && ord && ord !== '—'
+             && (rowPkg === BULK_STATE.pkg || rowPkg.replace(/ /g,'') === BULK_STATE.pkg.replace(/ /g,''));
+    }) : [];
 
-    const toReceive  = Math.min(pendingRows.length, qty);
-    const surplus    = Math.max(0, qty - pendingRows.length);
+    const toReceive = Math.min(pendingRows.length, qty);
+    BULK_STATE.pendingRows = pendingRows.slice(0, toReceive);
 
-    BULK_STATE.pendingRows  = pendingRows.slice(0, toReceive);
-    BULK_STATE.surplusCount = surplus;
+    const newOnHand = currentOnHand + qty;
 
-    // Build preview
     let previewHtml = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
         <div style="background:var(--green-light);border-radius:10px;padding:12px;text-align:center;">
-          <div style="font-size:28px;font-weight:700;color:var(--green);">${toReceive}</div>
-          <div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;">Member orders to receive</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);">${currentReceived} &rarr; ${currentReceived + qty}</div>
+          <div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;">Pool: Received</div>
         </div>
-        <div style="background:${surplus > 0 ? '#FFF8E1' : 'var(--gray-light)'};border-radius:10px;padding:12px;text-align:center;">
-          <div style="font-size:28px;font-weight:700;color:${surplus > 0 ? '#E65100' : 'var(--gray)'};">${surplus}</div>
-          <div style="font-size:11px;color:${surplus > 0 ? '#E65100' : 'var(--gray)'};text-transform:uppercase;letter-spacing:0.5px;">Surplus placeholder rows</div>
+        <div style="background:#E8F4FD;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:var(--blue);">${currentOnHand} &rarr; ${newOnHand}</div>
+          <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;">Est. On Hand</div>
         </div>
       </div>`;
 
     if (toReceive > 0) {
-      previewHtml += `<div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Orders to mark In Inventory:</div>`;
+      previewHtml += '<div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">' + toReceive + ' pending order' + (toReceive !== 1 ? 's' : '') + ' will be marked In Inventory:</div>';
       for (const row of BULK_STATE.pendingRows) {
         const name = getCellValue(row, 'Customer Name', sheetId);
         const ord  = getCellValue(row, 'Order Number', sheetId);
-        previewHtml += `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--cream-dark);color:var(--navy);">
-          ${name} <span style="color:var(--gray);font-size:11px;">— Order #${ord}</span></div>`;
+        previewHtml += '<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--cream-dark);color:var(--navy);">' + name + ' <span style="color:var(--gray);font-size:11px;">— Order #' + ord + '</span></div>';
       }
+      if (pendingRows.length > qty) {
+        previewHtml += '<div style="margin-top:8px;font-size:12px;color:var(--gray);font-style:italic;">Note: ' + (pendingRows.length - qty) + ' additional pending orders remain beyond this shipment.</div>';
+      }
+    } else {
+      previewHtml += '<div style="font-size:12px;color:var(--gray);font-style:italic;margin-top:8px;">No pending member orders found. Pool updated — kits available for walk-in pickup.</div>';
     }
-
-    if (surplus > 0) {
-      previewHtml += `<div style="margin-top:12px;font-size:12px;color:#E65100;font-style:italic;">
-        ${surplus} blank placeholder row${surplus !== 1 ? 's' : ''} will be created for walk-in inventory.</div>`;
-    }
-
-    if (pendingRows.length > qty) {
-      previewHtml += `<div style="margin-top:8px;font-size:12px;color:var(--gray);font-style:italic;">
-        Note: ${pendingRows.length - qty} additional pending orders exist beyond this shipment quantity and will remain Pending.</div>`;
-    }
+    previewHtml += '<div style="margin-top:12px;font-size:12px;color:var(--navy);font-style:italic;background:var(--gray-light);padding:10px;border-radius:8px;">No placeholder rows created. Inventory tracked as a running pool.</div>';
 
     document.getElementById('bulk-preview-content').innerHTML = previewHtml;
     document.getElementById('bulk-preview').style.display = 'block';
@@ -2901,68 +2883,43 @@ async function previewBulkReceive() {
 async function confirmBulkReceive() {
   showLoading(true);
   try {
-    const sheetId = BULK_STATE.sheetId;
-    const colMap  = STATE.columnMap[sheetId];
-    const today   = new Date().toISOString().split('T')[0];
+    const today      = new Date().toISOString().split('T')[0];
+    const invSheetId = BULK_STATE.invSheetId;
+    const invColMap  = STATE.columnMap[invSheetId];
 
-    // Step 1: Mark pending member orders as In Inventory
+    // Step 1: Increment Received in Inventory Summary pool
+    if (BULK_STATE.invRowId && invColMap['Received']) {
+      await apiCall('/sheets/' + invSheetId + '/rows', 'PUT', [{
+        id: BULK_STATE.invRowId,
+        cells: [{ columnId: invColMap['Received'], value: BULK_STATE.newReceived }]
+      }]);
+    } else {
+      showToast('Inventory Summary row not found — update Received manually.', 'warning');
+    }
+
+    // Step 2: Mark matching pending orders as In Inventory
     if (BULK_STATE.pendingRows.length > 0) {
-      const updates = BULK_STATE.pendingRows.map(row => ({
+      const locSheetId = BULK_STATE.locSheetId;
+      const locColMap  = STATE.columnMap[locSheetId];
+      const updates    = BULK_STATE.pendingRows.map(row => ({
         id: row.id,
         cells: [
-          { columnId: colMap['Status'],        value: 'In Inventory' },
-          { columnId: colMap['Received Date'],  value: today },
+          { columnId: locColMap['Status'],        value: 'In Inventory' },
+          { columnId: locColMap['Received Date'], value: today },
         ]
       }));
-
-      // Smartsheet API accepts up to 20 rows per PUT request
-      const chunkSize = 20;
-      for (let i = 0; i < updates.length; i += chunkSize) {
-        const chunk = updates.slice(i, i + chunkSize);
-        await apiCall(`/sheets/${sheetId}/rows`, 'PUT', chunk);
+      for (let i = 0; i < updates.length; i += 20) {
+        await apiCall('/sheets/' + locSheetId + '/rows', 'PUT', updates.slice(i, i + 20));
       }
+      delete STATE.sheetCache[locSheetId];
     }
 
-    // Step 2: Create surplus placeholder rows
-    if (BULK_STATE.surplusCount > 0) {
-      const pkg     = BULK_STATE.pkg;
-      const qrId    = BULK_STATE.qrId;
-      const loc     = BULK_STATE.location;
-
-      // Derive season from package code
-      const seasonMap = { 'W': 'Winter', 'S': 'Spring', 'F': 'Fall' };
-      const season = seasonMap[pkg.charAt(0).toUpperCase()] || 'Year-Round';
-
-      const newRows = Array.from({ length: BULK_STATE.surplusCount }, () => ({
-        cells: [
-          { columnId: colMap['Club Package'],        value: pkg },
-          { columnId: colMap['Season'],              value: season },
-          { columnId: colMap['Order Type'],          value: 'Standard' },
-          { columnId: colMap['QR Code ID'],          value: qrId },
-          { columnId: colMap['Assigned Location'],   value: loc },
-          { columnId: colMap['Status'],              value: 'In Inventory' },
-          { columnId: colMap['Received Date'],       value: today },
-          { columnId: colMap['Depletion Location'],  value: loc },
-        ]
-      }));
-
-      // Create in chunks of 20
-      const chunkSize = 20;
-      for (let i = 0; i < newRows.length; i += chunkSize) {
-        const chunk = newRows.slice(i, i + chunkSize);
-        await apiCall(`/sheets/${sheetId}/rows`, 'POST', chunk);
-      }
-    }
-
-    delete STATE.sheetCache[sheetId];
+    delete STATE.sheetCache[invSheetId];
     loadStats();
 
-    showToast(
-      `✅ Received ${BULK_STATE.pendingRows.length + BULK_STATE.surplusCount} kits`,
-      'success'
-    );
-
-    setTimeout(() => goBack('screen-main'), 1500);
+    const memberCount = BULK_STATE.pendingRows.length;
+    showToast('Received +' + BULK_STATE.qty + ' kits' + (memberCount > 0 ? ', ' + memberCount + ' orders updated' : ''), 'success');
+    setTimeout(() => goBack('screen-main'), 1800);
 
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
