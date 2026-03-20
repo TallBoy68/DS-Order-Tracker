@@ -2876,8 +2876,8 @@ async function previewBulkReceive() {
     if (toReceive > 0) {
       previewHtml += '<div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">' + toReceive + ' pending order' + (toReceive !== 1 ? 's' : '') + ' will be marked In Inventory:</div>';
       for (const row of BULK_STATE.pendingRows) {
-        const name = getCellValue(row, 'Customer Name', sheetId);
-        const ord  = getCellValue(row, 'Order Number', sheetId);
+        const name = getCellValue(row, 'Customer Name', locSheetId);
+        const ord  = getCellValue(row, 'Order Number', locSheetId);
         previewHtml += '<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--cream-dark);color:var(--navy);">' + name + ' <span style="color:var(--gray);font-size:11px;">— Order #' + ord + '</span></div>';
       }
       if (pendingRows.length > qty) {
