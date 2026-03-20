@@ -2812,27 +2812,46 @@ async function previewBulkReceive() {
   const qr  = document.getElementById('bulk-qr').value.trim();
   const qty = parseInt(document.getElementById('bulk-qty').value);
 
-  if (!qr)      { showToast('Please enter or scan a QR Code.', 'error'); return; }
+  if (!qr)             { showToast('Please enter or scan a QR Code.', 'error'); return; }
   if (!qty || qty < 1) { showToast('Please enter a valid quantity.', 'error'); return; }
 
-  BULK_STATE.qrId     = qr;
-  BULK_STATE.pkg      = qr.replace('QR-', '').replace(/-/g, ' ');
-  BULK_STATE.qty      = qty;
+  BULK_STATE.qrId = qr;
+  BULK_STATE.pkg  = parsePkgFromQR(qr);
+  BULK_STATE.qty  = qty;
 
   showLoading(true);
   try {
-    const sheetId = STATE.sheetIdMap[BULK_STATE.location];
-    if (!sheetId) throw new Error('Sheet not found for ' + BULK_STATE.location);
+    // Step 1: Look up Inventory Summary pool row
+    const invSheetId = STATE.sheetIdMap['InventorySummary'];
+    if (!invSheetId) throw new Error('Inventory Summary sheet not found. Check sheet name.');
+    const invSheet = await getSheet(invSheetId);
+    delete STATE.sheetCache[invSheetId];
 
-    const sheet = await getSheet(sheetId);
-    delete STATE.sheetCache[sheetId];
-    BULK_STATE.sheetId = sheetId;
+    const invRow = invSheet.rows.find(r => {
+      const rowPkg = getCellValue(r, 'Club Package', invSheetId);
+      const rowLoc = getCellValue(r, 'Location', invSheetId);
+      return (rowPkg === BULK_STATE.pkg || rowPkg.replace(/ /g,'') === BULK_STATE.pkg.replace(/ /g,''))
+             && rowLoc === BULK_STATE.location;
+    });
 
-    const pendingRows = sheet ? sheet.rows.filter(r => {
-      const rowPkg = getCellValue(r, 'Club Package', sheetId);
-      const status = getCellValue(r, 'Status', sheetId);
-      const name   = getCellValue(r, 'Customer Name', sheetId);
-      const ord    = getCellValue(r, 'Order Number', sheetId);
+    const currentReceived = invRow ? parseInt(getCellValue(invRow, 'Received', invSheetId)) || 0 : 0;
+    const currentOnHand   = invRow ? parseInt(getCellValue(invRow, 'On Hand',  invSheetId)) || 0 : 0;
+    BULK_STATE.invSheetId      = invSheetId;
+    BULK_STATE.invRowId        = invRow ? invRow.id : null;
+    BULK_STATE.currentReceived = currentReceived;
+    BULK_STATE.newReceived     = currentReceived + qty;
+
+    // Step 2: Find pending member orders on location sheet
+    const locSheetId = STATE.sheetIdMap[BULK_STATE.location];
+    const locSheet   = locSheetId ? await getSheet(locSheetId) : null;
+    if (locSheetId) delete STATE.sheetCache[locSheetId];
+    BULK_STATE.locSheetId = locSheetId;
+
+    const pendingRows = locSheet ? locSheet.rows.filter(r => {
+      const rowPkg = getCellValue(r, 'Club Package', locSheetId);
+      const status = getCellValue(r, 'Status', locSheetId);
+      const name   = getCellValue(r, 'Customer Name', locSheetId);
+      const ord    = getCellValue(r, 'Order Number', locSheetId);
       return status === 'Pending' && name && name !== '—' && ord && ord !== '—'
              && (rowPkg === BULK_STATE.pkg || rowPkg.replace(/ /g,'') === BULK_STATE.pkg.replace(/ /g,''));
     }) : [];
