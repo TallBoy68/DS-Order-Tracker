@@ -2314,8 +2314,12 @@ function showResult(row, sheetId, multiCount) {
   // Dual box alert for LAM and GE clubs
   const dualBoxAlert = document.getElementById('dualbox-alert');
   if (dualBoxAlert) {
-    const pkg = getCellValue(row, 'Club Package', sheetId);
-    dualBoxAlert.style.display = isDualBoxPkg(pkg) ? 'flex' : 'none';
+    // Check Club Package first, fall back to QR Code ID and Club Title
+    const pkg      = getCellValue(row, 'Club Package', sheetId);
+    const qrCode   = getCellValue(row, 'QR Code ID',   sheetId);
+    const clubTitle = getCellValue(row, 'Club Title',  sheetId);
+    const isDual   = isDualBoxPkg(pkg) || isDualBoxPkg(qrCode) || isDualBoxPkg(clubTitle);
+    dualBoxAlert.style.display = isDual ? 'flex' : 'none';
   }
 
   // Multiple orders alert
