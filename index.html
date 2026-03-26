@@ -1255,6 +1255,11 @@
       <p id="multi-alert-text"><strong>Multiple orders on file.</strong> This member has additional orders at this location. Please confirm all are accounted for.</p>
     </div>
 
+    <div class="multi-order-alert" id="dualbox-alert" style="display:none;background:#E8F5E9;border-color:#2E7D32;">
+      <div class="alert-icon">📦</div>
+      <p style="color:#1B5E20;"><strong>2-box order.</strong> This club includes 2 boxes — confirm both are present before fulfilling.</p>
+    </div>
+
     <div class="location-selector">
       <label>Confirm Pickup Location</label>
       <div class="location-chips" id="location-chips">
@@ -2306,6 +2311,13 @@ function showResult(row, sheetId, multiCount) {
   const hdr = document.getElementById('result-header');
   hdr.className = 'order-card-header ' + (orderType === 'Custom' ? 'custom' : 'standard');
 
+  // Dual box alert for LAM and GE clubs
+  const dualBoxAlert = document.getElementById('dualbox-alert');
+  if (dualBoxAlert) {
+    const pkg = getCellValue(row, 'Club Package', sheetId);
+    dualBoxAlert.style.display = isDualBoxPkg(pkg) ? 'flex' : 'none';
+  }
+
   // Multiple orders alert
   const multiAlert = document.getElementById('multi-alert');
   if (multiCount > 1) {
@@ -2738,6 +2750,13 @@ async function showExceptionLog() {
 // ══════════════════════════════════════════════════════════════
 // ADMIN — BULK RECEIVE
 // ══════════════════════════════════════════════════════════════
+function isDualBoxPkg(pkg) {
+  if (!pkg) return false;
+  const p = pkg.toUpperCase();
+  return p.includes(' LAM') || p.includes('-LAM') ||
+         p.includes(' GE')  || p.includes('-GE');
+}
+
 function parsePkgFromQR(qrId) {
   // Strip QR- prefix, then replace only the first dash (between year and club code)
   // QR-W26-EST    -> W26 EST
