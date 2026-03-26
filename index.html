@@ -1513,6 +1513,15 @@ const CONFIG = {
 // ══════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════
+// ── Local date helper — avoids UTC timezone offset issue ─────
+function localDateStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
 const STATE = {
   location:        null,
   isAdmin:         false,
@@ -1767,7 +1776,7 @@ async function loadStats() {
   try {
     // Build today's date in multiple formats to handle Smartsheet date variations
     const now = new Date();
-    const todayISO   = now.toISOString().split('T')[0]; // 2026-03-18
+    const todayISO   = localDateStr(); // local date, timezone-safe
     const todayYear  = now.getFullYear();
     const todayMonth = now.getMonth() + 1;
     const todayDay   = now.getDate();
@@ -2362,8 +2371,8 @@ async function updateStatus(newStatus) {
       { columnId: colMap['Status'], value: newStatus }
     ];
 
-    // Set date fields
-    const today = new Date().toISOString().split('T')[0];
+    // Set date fields — use local time to avoid UTC offset issue
+    const today = localDateStr();
     if (newStatus === 'In Inventory' || newStatus === 'Received') {
       if (colMap['Received Date']) cells.push({ columnId: colMap['Received Date'], value: today });
     }
@@ -2434,7 +2443,7 @@ async function completeWalkIn() {
     const colMap = STATE.columnMap[sheetId];
     delete STATE.sheetCache[sheetId];
 
-    const today    = new Date().toISOString().split('T')[0];
+    const today    = localDateStr();
     const qrId     = 'QR-' + club.replace(/ /g, '-');
     const seasonMap = { 'W': 'Winter', 'S': 'Spring', 'F': 'Fall' };
     const season   = seasonMap[club.charAt(0).toUpperCase()] || 'Year-Round';
@@ -2913,7 +2922,7 @@ async function previewBulkReceive() {
 async function confirmBulkReceive() {
   showLoading(true);
   try {
-    const today      = new Date().toISOString().split('T')[0];
+    const today      = localDateStr();
     const invSheetId = BULK_STATE.invSheetId;
     const invColMap  = STATE.columnMap[invSheetId];
 
