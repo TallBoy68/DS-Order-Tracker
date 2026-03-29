@@ -1148,6 +1148,11 @@
           <h3>Override Status</h3>
           <p>Correct an order status</p>
         </div>
+        <div class="action-card secondary" onclick="showTransfer()">
+          <span class="action-icon">🔀</span>
+          <h3>Transfer Kits</h3>
+          <p>Move orders or kits between locations</p>
+        </div>
       </div>
     </div>
 
@@ -1360,6 +1365,111 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Transfer Kits                                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-transfer">
+  <div class="app-header">
+    <div class="header-logo-wrap"><img src="" alt="DS" class="header-logo" id="transfer-logo"></div>
+    <button class="back-btn" onclick="goBack('screen-main')">← Back</button>
+    <div style="text-align:right">
+      <div class="header-title">Transfer Kits</div>
+      <div class="header-sub" id="transfer-location-sub">Portland</div>
+    </div>
+  </div>
+  <div class="walkin-content">
+
+    <!-- Transfer type selector -->
+    <div class="form-card">
+      <h3>Transfer Type</h3>
+      <div class="location-chips" id="transfer-type-chips" style="margin-bottom:0;">
+        <div class="loc-chip selected" data-type="custom" onclick="selectTransferType(this)">Custom Order</div>
+        <div class="loc-chip" data-type="standard" onclick="selectTransferType(this)">Standard Kits</div>
+      </div>
+    </div>
+
+    <!-- Custom Order Transfer -->
+    <div id="transfer-custom-section" class="form-card">
+      <h3>Custom Order Transfer</h3>
+      <div class="form-group">
+        <label>Search Member or Order #</label>
+        <input class="form-input" id="transfer-search" type="text"
+               placeholder="Enter customer name or order #"
+               oninput="transferSearchOrders(this.value)" autocomplete="off" autocorrect="off">
+      </div>
+      <div id="transfer-search-results" style="margin-top:4px;"></div>
+      <div id="transfer-selected-order" style="display:none;">
+        <div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-top:10px;">
+          <div style="font-size:13px;font-weight:700;color:var(--green);" id="transfer-selected-name">—</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:3px;" id="transfer-selected-meta">—</div>
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label>Transfer To</label>
+          <div class="location-chips" id="transfer-custom-dest-chips">
+            <div class="loc-chip" data-loc="Portland" onclick="selectTransferDest(this,'custom')">Portland</div>
+            <div class="loc-chip" data-loc="Lake Oswego" onclick="selectTransferDest(this,'custom')">Lake Oswego</div>
+            <div class="loc-chip" data-loc="Dayton" onclick="selectTransferDest(this,'custom')">Dayton</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Standard Kit Transfer -->
+    <div id="transfer-standard-section" class="form-card" style="display:none;">
+      <h3>Standard Kit Transfer</h3>
+      <div class="form-group">
+        <label>Scan or Enter QR Code</label>
+        <div style="display:flex;gap:8px;">
+          <input class="form-input" id="transfer-qr" type="text" placeholder="e.g. QR-S25-EST" autocomplete="off" style="flex:1;">
+          <button class="btn btn-primary" style="width:auto;padding:14px 16px;" onclick="startTransferScan()">📷</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Club Package</label>
+        <input class="form-input" id="transfer-pkg" type="text" placeholder="Auto-filled from QR" readonly style="color:var(--gray);">
+      </div>
+      <div class="form-group">
+        <label>Quantity to Transfer</label>
+        <input class="form-input" id="transfer-qty" type="number" min="1" max="999" placeholder="Enter number of kits to transfer" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Transfer From</label>
+        <div class="location-chips" id="transfer-std-from-chips">
+          <div class="loc-chip selected" data-loc="Portland" onclick="selectTransferFrom(this)">Portland</div>
+          <div class="loc-chip" data-loc="Lake Oswego" onclick="selectTransferFrom(this)">Lake Oswego</div>
+          <div class="loc-chip" data-loc="Dayton" onclick="selectTransferFrom(this)">Dayton</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Transfer To</label>
+        <div class="location-chips" id="transfer-std-dest-chips">
+          <div class="loc-chip" data-loc="Portland" onclick="selectTransferDest(this,'standard')">Portland</div>
+          <div class="loc-chip" data-loc="Lake Oswego" onclick="selectTransferDest(this,'standard')">Lake Oswego</div>
+          <div class="loc-chip" data-loc="Dayton" onclick="selectTransferDest(this,'standard')">Dayton</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview panel (shared) -->
+    <div id="transfer-preview" style="display:none;">
+      <div class="form-card" style="background:var(--white);">
+        <h3>Transfer Summary</h3>
+        <div id="transfer-preview-content"></div>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <button class="btn btn-primary" onclick="previewTransfer()">
+        🔍 Preview Before Confirming
+      </button>
+      <button class="btn btn-success" id="transfer-confirm-btn" style="display:none;" onclick="confirmTransfer()">
+        ✅ Confirm Transfer
+      </button>
+      <button class="btn btn-outline" onclick="goBack('screen-main')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
 <!-- SCREEN: Bulk Receive                                       -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="screen" id="screen-bulk">
@@ -1547,7 +1657,8 @@ const STATE = {
   pendingRows:      [],
   hasInventory:     false,
   completedSheetId: null,
-  bulkScanMode:     false
+  bulkScanMode:     false,
+  transferScanMode: false
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1970,6 +2081,11 @@ function showManualEntry() {
 // ORDER LOOKUP
 // ══════════════════════════════════════════════════════════════
 async function lookupOrder(qrOrOrderNum) {
+  // If in transfer scan mode, route back to transfer screen
+  if (STATE.transferScanMode) {
+    completeTransferScan(qrOrOrderNum);
+    return;
+  }
   // If in bulk scan mode, route back to bulk receive screen
   if (STATE.bulkScanMode) {
     completeBulkScan(qrOrOrderNum);
@@ -2983,6 +3099,510 @@ async function confirmBulkReceive() {
     showToast('Received +' + BULK_STATE.qty + ' kits' + (memberCount > 0 ? ', ' + memberCount + ' orders updated' : ''), 'success');
     setTimeout(() => goBack('screen-main'), 1800);
 
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRANSFER KITS
+// ══════════════════════════════════════════════════════════════
+let TRANSFER_STATE = {
+  type:             'custom',   // 'custom' | 'standard'
+  // Custom transfer state
+  selectedRow:      null,
+  selectedSheetId:  null,
+  selectedName:     '',
+  selectedOrderNum: '',
+  selectedCurrentLoc: '',
+  customDest:       '',
+  // Standard transfer state
+  qrId:             '',
+  pkg:              '',
+  qty:              0,
+  stdFrom:          '',
+  stdDest:          '',
+  // Preview results (standard)
+  fromInvSheetId:   null,
+  fromInvRowId:     null,
+  toInvSheetId:     null,
+  toInvRowId:       null,
+  fromCurrentReceived: 0,
+  fromNewReceived:  0,
+  toCurrentReceived:   0,
+  toNewReceived:    0,
+  toPendingRows:    [],
+  toLocSheetId:     null,
+};
+
+function showTransfer() {
+  if (!STATE.isAdmin) { showToast('Admin access required.', 'error'); return; }
+
+  // Reset state
+  Object.assign(TRANSFER_STATE, {
+    type: 'custom',
+    selectedRow: null, selectedSheetId: null,
+    selectedName: '', selectedOrderNum: '', selectedCurrentLoc: '',
+    customDest: '',
+    qrId: '', pkg: '', qty: 0,
+    stdFrom: STATE.location, stdDest: '',
+    fromInvSheetId: null, fromInvRowId: null,
+    toInvSheetId: null, toInvRowId: null,
+    fromCurrentReceived: 0, fromNewReceived: 0,
+    toCurrentReceived: 0, toNewReceived: 0,
+    toPendingRows: [], toLocSheetId: null,
+  });
+
+  // UI reset
+  document.getElementById('transfer-search').value = '';
+  document.getElementById('transfer-qr').value = '';
+  document.getElementById('transfer-pkg').value = '';
+  document.getElementById('transfer-qty').value = '';
+  document.getElementById('transfer-search-results').innerHTML = '';
+  document.getElementById('transfer-selected-order').style.display = 'none';
+  document.getElementById('transfer-preview').style.display = 'none';
+  document.getElementById('transfer-confirm-btn').style.display = 'none';
+  document.getElementById('transfer-location-sub').textContent = STATE.location;
+  document.getElementById('transfer-custom-section').style.display = 'block';
+  document.getElementById('transfer-standard-section').style.display = 'none';
+
+  // Type chips
+  document.querySelectorAll('#transfer-type-chips .loc-chip').forEach(c => {
+    c.classList.toggle('selected', c.dataset.type === 'custom');
+  });
+
+  // Default "from" chips to current location
+  setDefaultLocationChips('transfer-std-from-chips', STATE.location);
+
+  // Copy logo
+  const logoSrc = document.querySelector('.header-logo-wrap img').src;
+  document.getElementById('transfer-logo').src = logoSrc;
+
+  showScreen('screen-transfer');
+}
+
+function selectTransferType(chip) {
+  document.querySelectorAll('#transfer-type-chips .loc-chip').forEach(c => c.classList.remove('selected'));
+  chip.classList.add('selected');
+  TRANSFER_STATE.type = chip.dataset.type;
+  const isCustom = TRANSFER_STATE.type === 'custom';
+  document.getElementById('transfer-custom-section').style.display = isCustom ? 'block' : 'none';
+  document.getElementById('transfer-standard-section').style.display = isCustom ? 'none' : 'block';
+  // Reset preview
+  document.getElementById('transfer-preview').style.display = 'none';
+  document.getElementById('transfer-confirm-btn').style.display = 'none';
+}
+
+function selectTransferFrom(chip) {
+  document.querySelectorAll('#transfer-std-from-chips .loc-chip').forEach(c => c.classList.remove('selected'));
+  chip.classList.add('selected');
+  TRANSFER_STATE.stdFrom = chip.dataset.loc;
+}
+
+function selectTransferDest(chip, mode) {
+  const containerId = mode === 'custom' ? 'transfer-custom-dest-chips' : 'transfer-std-dest-chips';
+  document.querySelectorAll(`#${containerId} .loc-chip`).forEach(c => c.classList.remove('selected'));
+  chip.classList.add('selected');
+  if (mode === 'custom') TRANSFER_STATE.customDest = chip.dataset.loc;
+  else TRANSFER_STATE.stdDest = chip.dataset.loc;
+}
+
+// ── Custom order search ─────────────────────────────────────
+let transferSearchTimer = null;
+function transferSearchOrders(query) {
+  clearTimeout(transferSearchTimer);
+  if (!query || query.trim().length < 2) {
+    document.getElementById('transfer-search-results').innerHTML = '';
+    return;
+  }
+  transferSearchTimer = setTimeout(() => doTransferSearch(query.trim()), 300);
+}
+
+async function doTransferSearch(query) {
+  const resultsEl = document.getElementById('transfer-search-results');
+  resultsEl.innerHTML = '<div style="font-size:12px;color:var(--gray);padding:8px 0;">Searching…</div>';
+  const q = query.toLowerCase();
+  const hits = [];
+  try {
+    for (const [loc, sheetId] of Object.entries(STATE.sheetIdMap)) {
+      if (['CompletedOrders','ExceptionLog','InventorySummary'].includes(loc)) continue;
+      if (!sheetId) continue;
+      const sheet = await getSheet(sheetId);
+      for (const row of sheet.rows) {
+        const name = getCellValue(row, 'Customer Name', sheetId);
+        const ord  = getCellValue(row, 'Order Number', sheetId);
+        const status = getCellValue(row, 'Status', sheetId);
+        const type   = getCellValue(row, 'Order Type', sheetId) || getCellValue(row, 'Club Package', sheetId) || '';
+        if (!name || name === '—') continue;
+        if (status === 'Fulfilled' || status === 'Completed') continue;
+        if (name.toLowerCase().includes(q) || String(ord).toLowerCase().includes(q)) {
+          hits.push({ row, sheetId, loc, name, ord, status, type });
+        }
+      }
+    }
+  } catch(e) {
+    resultsEl.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 0;">Search error: ' + e.message + '</div>';
+    return;
+  }
+  if (hits.length === 0) {
+    resultsEl.innerHTML = '<div style="font-size:12px;color:var(--gray);padding:8px 0;">No active orders found.</div>';
+    return;
+  }
+  let html = '';
+  hits.slice(0, 10).forEach((h, i) => {
+    html += `<div class="result-row" onclick="selectTransferOrder(${i})" style="padding:10px 12px;cursor:pointer;"
+               data-idx="${i}">
+               <div class="result-row-info">
+                 <h4>${h.name}</h4>
+                 <p>Order #${h.ord} · ${h.loc} · ${h.status}</p>
+               </div>
+               <span class="result-row-badge badge-custom">${h.type}</span>
+             </div>`;
+  });
+  resultsEl.innerHTML = html;
+  // stash hits on window for click handler
+  window._transferHits = hits;
+}
+
+function selectTransferOrder(idx) {
+  const h = window._transferHits[idx];
+  if (!h) return;
+  TRANSFER_STATE.selectedRow = h.row;
+  TRANSFER_STATE.selectedSheetId = h.sheetId;
+  TRANSFER_STATE.selectedName = h.name;
+  TRANSFER_STATE.selectedOrderNum = h.ord;
+  TRANSFER_STATE.selectedCurrentLoc = h.loc;
+
+  document.getElementById('transfer-selected-name').textContent = h.name;
+  document.getElementById('transfer-selected-meta').textContent =
+    `Order #${h.ord} · Currently at ${h.loc} · ${h.status}`;
+  document.getElementById('transfer-selected-order').style.display = 'block';
+  document.getElementById('transfer-search-results').innerHTML = '';
+  document.getElementById('transfer-search').value = h.name;
+
+  // Remove current location from dest chips
+  document.querySelectorAll('#transfer-custom-dest-chips .loc-chip').forEach(c => {
+    c.style.opacity = c.dataset.loc === h.loc ? '0.35' : '1';
+    c.style.pointerEvents = c.dataset.loc === h.loc ? 'none' : 'auto';
+    if (c.classList.contains('selected') && c.dataset.loc === h.loc) c.classList.remove('selected');
+  });
+
+  // Reset preview
+  document.getElementById('transfer-preview').style.display = 'none';
+  document.getElementById('transfer-confirm-btn').style.display = 'none';
+}
+
+// ── Standard kit scan ───────────────────────────────────────
+function startTransferScan() {
+  STATE.transferScanMode = true;
+  showScreen('screen-scan');
+  startScan();
+}
+
+function completeTransferScan(qrValue) {
+  STATE.transferScanMode = false;
+  const pkg = parsePkgFromQR(qrValue);
+  document.getElementById('transfer-qr').value = qrValue;
+  document.getElementById('transfer-pkg').value = pkg;
+  TRANSFER_STATE.qrId = qrValue;
+  TRANSFER_STATE.pkg  = pkg;
+  showScreen('screen-transfer');
+  showToast('QR scanned: ' + qrValue, 'success');
+  setTimeout(() => document.getElementById('transfer-qty').focus(), 300);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tQrInput = document.getElementById('transfer-qr');
+  if (tQrInput) {
+    tQrInput.addEventListener('change', () => {
+      const qr  = tQrInput.value.trim();
+      const pkg = parsePkgFromQR(qr);
+      document.getElementById('transfer-pkg').value = pkg;
+      TRANSFER_STATE.qrId = qr;
+      TRANSFER_STATE.pkg  = pkg;
+    });
+  }
+});
+
+// ── Preview ─────────────────────────────────────────────────
+async function previewTransfer() {
+  document.getElementById('transfer-preview').style.display = 'none';
+  document.getElementById('transfer-confirm-btn').style.display = 'none';
+
+  if (TRANSFER_STATE.type === 'custom') {
+    await previewCustomTransfer();
+  } else {
+    await previewStandardTransfer();
+  }
+}
+
+async function previewCustomTransfer() {
+  if (!TRANSFER_STATE.selectedRow) {
+    showToast('Please select an order to transfer.', 'error'); return;
+  }
+  if (!TRANSFER_STATE.customDest) {
+    showToast('Please select a destination location.', 'error'); return;
+  }
+  if (TRANSFER_STATE.customDest === TRANSFER_STATE.selectedCurrentLoc) {
+    showToast('Destination must differ from current location.', 'error'); return;
+  }
+
+  const name = TRANSFER_STATE.selectedName;
+  const ord  = TRANSFER_STATE.selectedOrderNum;
+  const from = TRANSFER_STATE.selectedCurrentLoc;
+  const to   = TRANSFER_STATE.customDest;
+
+  const html = `
+    <div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:700;color:var(--green);">${name}</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:3px;">Order #${ord}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div style="flex:1;background:var(--gray-light);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);">${from}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">Current Location</div>
+      </div>
+      <div style="font-size:20px;color:var(--navy);">→</div>
+      <div style="flex:1;background:#E8F4FD;border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:13px;font-weight:700;color:var(--navy-light);">${to}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">New Location</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--navy);font-style:italic;background:var(--gray-light);padding:10px;border-radius:8px;">
+      Order stays assigned to ${name}. Only the pickup location changes.
+    </div>`;
+
+  document.getElementById('transfer-preview-content').innerHTML = html;
+  document.getElementById('transfer-preview').style.display = 'block';
+  document.getElementById('transfer-confirm-btn').style.display = 'flex';
+}
+
+async function previewStandardTransfer() {
+  const qr  = document.getElementById('transfer-qr').value.trim();
+  const qty = parseInt(document.getElementById('transfer-qty').value);
+  const selectedFrom = document.querySelector('#transfer-std-from-chips .loc-chip.selected');
+  const selectedDest = document.querySelector('#transfer-std-dest-chips .loc-chip.selected');
+
+  if (!qr)             { showToast('Please enter or scan a QR Code.', 'error'); return; }
+  if (!qty || qty < 1) { showToast('Please enter a valid quantity.', 'error'); return; }
+  if (!selectedFrom)   { showToast('Please select a source location.', 'error'); return; }
+  if (!selectedDest)   { showToast('Please select a destination location.', 'error'); return; }
+
+  TRANSFER_STATE.qrId    = qr;
+  TRANSFER_STATE.pkg     = parsePkgFromQR(qr);
+  TRANSFER_STATE.qty     = qty;
+  TRANSFER_STATE.stdFrom = selectedFrom.dataset.loc;
+  TRANSFER_STATE.stdDest = selectedDest.dataset.loc;
+
+  if (TRANSFER_STATE.stdFrom === TRANSFER_STATE.stdDest) {
+    showToast('Source and destination must be different locations.', 'error'); return;
+  }
+
+  showLoading(true);
+  try {
+    await initSheetIds();
+    const invSheetId = STATE.sheetIdMap['InventorySummary'];
+    if (!invSheetId) throw new Error('InventorySummary sheet not found.');
+    const invSheet = await getSheet(invSheetId);
+    delete STATE.sheetCache[invSheetId];
+
+    const pkg     = TRANSFER_STATE.pkg;
+    const fromLoc = TRANSFER_STATE.stdFrom;
+    const toLoc   = TRANSFER_STATE.stdDest;
+
+    // Find FROM inventory row
+    const fromInvRow = invSheet.rows.find(r => {
+      const rPkg = getCellValue(r, 'Club Package', invSheetId);
+      const rLoc = getCellValue(r, 'Location', invSheetId);
+      return (rPkg === pkg || rPkg.replace(/ /g,'') === pkg.replace(/ /g,'')) && rLoc === fromLoc;
+    });
+    if (!fromInvRow) throw new Error(`No inventory pool found for "${pkg}" at ${fromLoc}.`);
+
+    const fromReceived = parseInt(getCellValue(fromInvRow, 'Received', invSheetId)) || 0;
+    const fromOnHand   = parseInt(getCellValue(fromInvRow, 'On Hand',  invSheetId)) || 0;
+    if (qty > fromOnHand) throw new Error(`Cannot transfer ${qty} — only ${fromOnHand} on hand at ${fromLoc}.`);
+
+    // Find TO inventory row (may not exist — that's ok, warn user)
+    const toInvRow = invSheet.rows.find(r => {
+      const rPkg = getCellValue(r, 'Club Package', invSheetId);
+      const rLoc = getCellValue(r, 'Location', invSheetId);
+      return (rPkg === pkg || rPkg.replace(/ /g,'') === pkg.replace(/ /g,'')) && rLoc === toLoc;
+    });
+    const toReceived = toInvRow ? parseInt(getCellValue(toInvRow, 'Received', invSheetId)) || 0 : 0;
+    const toOnHand   = toInvRow ? parseInt(getCellValue(toInvRow, 'On Hand',  invSheetId)) || 0 : 0;
+
+    TRANSFER_STATE.fromInvSheetId    = invSheetId;
+    TRANSFER_STATE.fromInvRowId      = fromInvRow.id;
+    TRANSFER_STATE.toInvSheetId      = invSheetId;
+    TRANSFER_STATE.toInvRowId        = toInvRow ? toInvRow.id : null;
+    TRANSFER_STATE.fromCurrentReceived = fromReceived;
+    TRANSFER_STATE.fromNewReceived     = fromReceived - qty;
+    TRANSFER_STATE.toCurrentReceived   = toReceived;
+    TRANSFER_STATE.toNewReceived       = toReceived + qty;
+
+    // Find pending orders at destination
+    const toLocSheetId = STATE.sheetIdMap[toLoc];
+    const toLocSheet   = toLocSheetId ? await getSheet(toLocSheetId) : null;
+    if (toLocSheetId) delete STATE.sheetCache[toLocSheetId];
+    TRANSFER_STATE.toLocSheetId = toLocSheetId;
+
+    const pendingRows = toLocSheet ? toLocSheet.rows.filter(r => {
+      const rPkg   = getCellValue(r, 'Club Package', toLocSheetId);
+      const status = getCellValue(r, 'Status', toLocSheetId);
+      const name   = getCellValue(r, 'Customer Name', toLocSheetId);
+      const ord    = getCellValue(r, 'Order Number', toLocSheetId);
+      return status === 'Pending' && name && name !== '—' && ord && ord !== '—'
+             && (rPkg === pkg || rPkg.replace(/ /g,'') === pkg.replace(/ /g,''));
+    }) : [];
+
+    const toFulfill = Math.min(pendingRows.length, qty);
+    TRANSFER_STATE.toPendingRows = pendingRows.slice(0, toFulfill);
+
+    // Build preview HTML
+    let html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="background:var(--red-light);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${fromLoc} Pool</div>
+          <div style="font-size:18px;font-weight:700;color:var(--red);">${fromOnHand} &rarr; ${fromOnHand - qty}</div>
+          <div style="font-size:11px;color:var(--gray);">On Hand</div>
+        </div>
+        <div style="background:var(--green-light);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${toLoc} Pool</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green);">${toOnHand} &rarr; ${toOnHand + qty}</div>
+          <div style="font-size:11px;color:var(--gray);">On Hand</div>
+        </div>
+      </div>`;
+
+    if (toFulfill > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">${toFulfill} pending order${toFulfill !== 1 ? 's' : ''} at ${toLoc} will be marked In Inventory:</div>`;
+      for (const row of TRANSFER_STATE.toPendingRows) {
+        const n = getCellValue(row, 'Customer Name', toLocSheetId);
+        const o = getCellValue(row, 'Order Number', toLocSheetId);
+        html += `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--cream-dark);color:var(--navy);">${n} <span style="color:var(--gray);font-size:11px;">— Order #${o}</span></div>`;
+      }
+      if (pendingRows.length > qty) {
+        html += `<div style="margin-top:8px;font-size:12px;color:var(--gray);font-style:italic;">Note: ${pendingRows.length - qty} additional pending orders remain beyond this transfer.</div>`;
+      }
+    } else {
+      html += `<div style="font-size:12px;color:var(--gray);font-style:italic;margin-top:8px;">No pending member orders at ${toLoc}. Kits added to available pool.</div>`;
+    }
+    if (!toInvRow) {
+      html += `<div style="margin-top:12px;font-size:12px;color:var(--rust);background:#FBE9E7;padding:10px;border-radius:8px;">⚠️ No existing inventory pool for "${pkg}" at ${toLoc}. Only the FROM pool will be decremented — update ${toLoc} pool manually if needed.</div>`;
+    }
+
+    document.getElementById('transfer-preview-content').innerHTML = html;
+    document.getElementById('transfer-preview').style.display = 'block';
+    document.getElementById('transfer-confirm-btn').style.display = 'flex';
+
+  } catch(e) {
+    showToast('Preview error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ── Confirm ─────────────────────────────────────────────────
+async function confirmTransfer() {
+  if (TRANSFER_STATE.type === 'custom') {
+    await confirmCustomTransfer();
+  } else {
+    await confirmStandardTransfer();
+  }
+}
+
+async function confirmCustomTransfer() {
+  showLoading(true);
+  try {
+    const sheetId = TRANSFER_STATE.selectedSheetId;
+    const colMap  = STATE.columnMap[sheetId];
+    const rowId   = TRANSFER_STATE.selectedRow.id;
+    const toLoc   = TRANSFER_STATE.customDest;
+
+    // Assigned Location is the authoritative pickup location column.
+    // Smartsheet automation watches this column and will:
+    //   1. Move the row to the destination location sheet
+    //   2. Send a notification to configured recipients (Paul, Annalee, Dayton mgmt)
+    const assignedColId = colMap['Assigned Location'];
+    if (!assignedColId) {
+      throw new Error(
+        '"Assigned Location" column not found on this sheet. ' +
+        'Check that the column name matches exactly.'
+      );
+    }
+
+    const cells = [{ columnId: assignedColId, value: toLoc }];
+
+    // Also stamp a Transfer Date if that column exists — useful for
+    // Smartsheet automation conditions and audit trail
+    if (colMap['Transfer Date']) {
+      cells.push({ columnId: colMap['Transfer Date'], value: localDateStr() });
+    }
+
+    await apiCall('/sheets/' + sheetId + '/rows', 'PUT', [{ id: rowId, cells }]);
+
+    delete STATE.sheetCache[sheetId];
+    loadStats();
+    showToast(`${TRANSFER_STATE.selectedName} transferred to ${toLoc}`, 'success');
+    setTimeout(() => goBack('screen-main'), 1800);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function confirmStandardTransfer() {
+  showLoading(true);
+  try {
+    const today     = localDateStr();
+    const invSheetId = TRANSFER_STATE.fromInvSheetId;
+    const invColMap  = STATE.columnMap[invSheetId];
+
+    // Step 1: Decrement FROM pool Received
+    if (TRANSFER_STATE.fromInvRowId && invColMap['Received']) {
+      await apiCall('/sheets/' + invSheetId + '/rows', 'PUT', [{
+        id: TRANSFER_STATE.fromInvRowId,
+        cells: [{ columnId: invColMap['Received'], value: TRANSFER_STATE.fromNewReceived }]
+      }]);
+    }
+
+    // Step 2: Increment TO pool Received (if row exists)
+    if (TRANSFER_STATE.toInvRowId && invColMap['Received']) {
+      await apiCall('/sheets/' + invSheetId + '/rows', 'PUT', [{
+        id: TRANSFER_STATE.toInvRowId,
+        cells: [{ columnId: invColMap['Received'], value: TRANSFER_STATE.toNewReceived }]
+      }]);
+    }
+
+    // Step 3: Mark pending orders at dest as In Inventory
+    if (TRANSFER_STATE.toPendingRows.length > 0) {
+      const toLocSheetId = TRANSFER_STATE.toLocSheetId;
+      const toColMap     = STATE.columnMap[toLocSheetId];
+      const updates = TRANSFER_STATE.toPendingRows.map(row => ({
+        id: row.id,
+        cells: [
+          { columnId: toColMap['Status'],        value: 'In Inventory' },
+          { columnId: toColMap['Received Date'], value: today },
+        ]
+      }));
+      for (let i = 0; i < updates.length; i += 20) {
+        await apiCall('/sheets/' + toLocSheetId + '/rows', 'PUT', updates.slice(i, i + 20));
+      }
+      delete STATE.sheetCache[toLocSheetId];
+    }
+
+    delete STATE.sheetCache[invSheetId];
+    loadStats();
+
+    const memberCount = TRANSFER_STATE.toPendingRows.length;
+    showToast(
+      `Transferred ${TRANSFER_STATE.qty} kits to ${TRANSFER_STATE.stdDest}` +
+      (memberCount > 0 ? `, ${memberCount} orders updated` : ''),
+      'success'
+    );
+    setTimeout(() => goBack('screen-main'), 1800);
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
